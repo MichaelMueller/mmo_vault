@@ -1,0 +1,13 @@
+# Whitelist statt Blacklist: erst alles ausschließen, dann gezielt einbeziehen.
+# So landet auch künftig nichts versehentlich im Build-Kontext, was dort nicht
+# hingehört — insbesondere keine Vault-Dateien, keine .git-Historie und keine
+# privaten Projektnotizen.
+*
+
+!mmo_vault
+!docker
+
+# Falls beim Entwickeln eine echte Vault-Datei im Auslieferverzeichnis landet,
+# darf sie unter keinen Umständen mit ins Image.
+mmo_vault/**/*.vault
+mmo_vault/**/mmo-vault*.json

@@ -1,0 +1,3088 @@
+<!DOCTYPE html>
+<html lang="de"><head><meta charset="UTF-8">
+<!-- Setzt das Versprechen "keine externen Requests" technisch durch: kein Netzwerk,
+     keine externen Skripte/Styles/Fonts. 'unsafe-inline' ist nötig, weil Skript und
+     Style bewusst in dieser einen Datei liegen. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>MMO Vault — lokaler Passwortmanager</title>
+<style>
+:root{
+  /* Vault-Palette: dunkles Stahl/Grün, Messing-Akzent, Patina-Sekundärfarbe */
+  --surface: #121614;
+  --surface-container-low: #171c1a;
+  --surface-container: #1c2220;
+  --surface-container-high: #242b28;
+  --surface-container-highest: #2c3431;
+  --on-surface: #e4e8e4;
+  --on-surface-variant: #a6b3ad;
+  --outline: #3d4a45;
+  --outline-variant: #2a332f;
+
+  --primary: #d4af6a;
+  --on-primary: #2b1e00;
+  --primary-container: #4a3b14;
+  --on-primary-container: #f2d9a0;
+
+  --secondary: #83b6a6;
+  --on-secondary: #06332a;
+  --secondary-container: #17352c;
+  --on-secondary-container: #a8d4c3;
+
+  --error: #ffb4ab;
+  --on-error: #690005;
+  --error-container: #93000a;
+
+  --font-display: "JetBrains Mono", "Cascadia Code", "Fira Code", "SF Mono", ui-monospace, "Roboto Mono", monospace;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", "Roboto Mono", ui-monospace, monospace;
+
+  --radius-s: 12px;
+  --radius-m: 16px;
+  --radius-l: 28px;
+}
+
+*{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+html,body{margin:0;padding:0;height:100%;}
+body{
+  background: radial-gradient(1200px 800px at 20% -10%, #1a2320 0%, var(--surface) 55%);
+  color: var(--on-surface);
+  font-family: var(--font-body);
+  min-height:100vh;
+  min-height:100dvh;
+  display:flex;
+  flex-direction:column;
+  overflow-x:hidden;
+}
+button{font-family:inherit;}
+:focus-visible{outline:2px solid var(--primary); outline-offset:2px;}
+::selection{background: var(--primary-container); color: var(--on-primary-container);}
+
+/* Scrollbar dezent */
+::-webkit-scrollbar{width:8px;}
+::-webkit-scrollbar-thumb{background:var(--outline); border-radius:8px;}
+
+/* ---------- Sperr-Bildschirm ---------- */
+#lockScreen{
+  flex:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+}
+.lock-card{
+  width:100%;
+  max-width:420px;
+  background: var(--surface-container);
+  border-radius: var(--radius-l);
+  padding: 40px 32px 32px;
+  box-shadow: 0 8px 30px rgba(0,0,0,.45);
+  border: 1px solid var(--outline-variant);
+  position:relative;
+  overflow:hidden;
+}
+.lock-card::before{
+  content:"";
+  position:absolute; inset:0 0 auto 0; height:4px;
+  background: linear-gradient(90deg, var(--secondary), var(--primary));
+}
+.lang-toggle{
+  position:absolute; top:16px; right:16px;
+  background: var(--surface-container-high); border:1px solid var(--outline);
+  color: var(--on-surface-variant); border-radius:14px; padding:5px 12px;
+  font-size:11.5px; font-weight:600; letter-spacing:.5px; cursor:pointer;
+  transition: background .12s;
+}
+.lang-toggle:hover{background: var(--surface-container-highest); color: var(--on-surface);}
+.lang-toggle-topbar{
+  background: var(--surface-container-high); border:1px solid var(--outline);
+  color: var(--on-surface-variant); border-radius:14px; padding:6px 12px;
+  font-size:11.5px; font-weight:600; letter-spacing:.5px; cursor:pointer;
+  transition: background .12s; flex-shrink:0;
+}
+.lang-toggle-topbar:hover{background: var(--surface-container-highest); color: var(--on-surface);}
+
+.autolock-indicator{
+  display:flex; align-items:center; gap:5px;
+  background: var(--surface-container-high); border:1px solid var(--outline);
+  color: var(--on-surface-variant); border-radius:14px; padding:6px 11px;
+  font-size:12px; font-family:var(--font-mono); cursor:pointer; flex-shrink:0;
+  transition: background .12s, color .12s;
+}
+.autolock-indicator:hover{background: var(--surface-container-highest); color: var(--on-surface);}
+.autolock-indicator svg{width:15px; height:15px; fill:currentColor; flex-shrink:0;}
+.autolock-indicator.warn{color:var(--error); border-color: var(--error);}
+
+.dirty-dot{
+  position:absolute; top:6px; right:6px; width:9px; height:9px;
+  border-radius:50%; background: var(--error);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.dirty-dot-inline{
+  display:inline-block; width:8px; height:8px; border-radius:50%;
+  background: var(--error); margin-left:4px; vertical-align:middle;
+}
+.dial{
+  width:88px; height:88px; margin:0 auto 20px;
+  border-radius:50%;
+  border: 3px solid var(--primary);
+  position:relative;
+  display:flex; align-items:center; justify-content:center;
+  background: radial-gradient(circle at 35% 30%, var(--surface-container-high), var(--surface-container-low));
+}
+.dial::before{
+  content:""; position:absolute; inset:-10px;
+  border-radius:50%;
+  border: 1px dashed var(--outline);
+}
+.dial svg{width:34px; height:34px; fill:var(--primary);}
+
+h1.brand{
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight:700;
+  text-align:center;
+  margin: 0 0 4px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.subtitle{
+  text-align:center;
+  color: var(--on-surface-variant);
+  font-size:13.5px;
+  margin: 0 0 28px;
+}
+
+.field{
+  position:relative;
+  margin-bottom:18px;
+}
+.field input, .field select, .field textarea{
+  width:100%;
+  background: var(--surface-container-high);
+  border: 1px solid var(--outline);
+  color: var(--on-surface);
+  border-radius: var(--radius-s);
+  padding: 16px 14px 8px;
+  font-size:15px;
+  outline:none;
+  transition: border-color .15s;
+}
+.field textarea{padding-top:14px; resize:vertical; min-height:60px;}
+.field input:focus, .field select:focus, .field textarea:focus{
+  border-color: var(--primary);
+  border-width:2px;
+  padding-left:13px;
+}
+.field label{
+  position:absolute; left:14px; top:14px;
+  color: var(--on-surface-variant);
+  font-size:15px;
+  pointer-events:none;
+  transition: all .15s ease;
+  background:transparent;
+}
+.field input:focus + label,
+.field input:not(:placeholder-shown) + label,
+.field textarea:focus + label,
+.field textarea:not(:placeholder-shown) + label,
+.field.filled label{
+  top:4px; font-size:11px; color: var(--primary);
+}
+.field input::placeholder, .field textarea::placeholder{color:transparent;}
+
+.btn{
+  border:none;
+  border-radius: 20px;
+  padding: 13px 24px;
+  font-size:14.5px;
+  font-weight:600;
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  transition: filter .12s, transform .05s;
+}
+.btn:active{transform: scale(.98);}
+.btn-filled{background: var(--primary); color: var(--on-primary);}
+.btn-filled:hover{filter:brightness(1.08);}
+.btn-tonal{background: var(--secondary-container); color: var(--on-secondary-container);}
+.btn-tonal:hover{filter:brightness(1.1);}
+.btn-outline{background:transparent; border:1px solid var(--outline); color: var(--on-surface);}
+.btn-outline:hover{background: var(--surface-container-high);}
+.btn-text{background:transparent; color: var(--primary); padding:10px 12px;}
+.btn-text:hover{background: rgba(212,175,106,.08);}
+.btn-block{width:100%;}
+.btn-danger{background: var(--error-container); color:#ffdad6;}
+.btn:disabled{opacity:.45; cursor:not-allowed;}
+
+.lock-actions{display:flex; flex-direction:column; gap:10px; margin-top:8px;}
+.lock-secondary-row{display:flex; gap:10px; margin-top:14px;}
+.lock-secondary-row .btn{flex:1;}
+.lock-secondary-row .btn-remove{
+  flex:0 0 auto; width:44px; padding:0; font-size:16px; line-height:1;
+}
+.remembered-file-label{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;}
+
+.history-item{
+  display:flex; flex-direction:column; gap:2px;
+  padding:10px 4px; border-bottom:1px solid var(--outline-variant);
+}
+.history-item:last-child{border-bottom:none;}
+.history-item .history-action{font-size:13.5px; color:var(--on-surface);}
+.history-item .history-detail{font-size:12.5px; color:var(--on-surface-variant);}
+.history-item .history-ts{font-family:var(--font-mono); font-size:11px; color:var(--on-surface-variant);}
+.history-empty{color:var(--on-surface-variant); font-size:13px; text-align:center; padding:24px 0;}
+.hint{font-size:12px; color: var(--on-surface-variant); text-align:center; margin-top:16px; line-height:1.5;}
+.hint code{font-family:var(--font-mono); background:var(--surface-container-high); padding:1px 5px; border-radius:5px; font-size:11px;}
+.status-msg{
+  font-size:13px; text-align:center; padding:10px 12px; border-radius:var(--radius-s);
+  margin-bottom:14px; display:none;
+}
+.status-msg.error{display:block; background: var(--error-container); color:#ffdad6;}
+.status-msg.info{display:block; background: var(--secondary-container); color: var(--on-secondary-container);}
+
+/* ---------- Haupt-App ---------- */
+#appScreen{display:none; flex:1; flex-direction:column; min-height:100vh; min-height:100dvh;}
+.topbar{
+  position:sticky; top:0; z-index:20;
+  background: rgba(18,22,20,.85);
+  backdrop-filter: blur(10px);
+  border-bottom:1px solid var(--outline-variant);
+  padding: 14px 20px;
+  display:flex; align-items:center; gap:14px;
+}
+.topbar h2{
+  font-family: var(--font-display);
+  font-size:16px; font-weight:700; margin:0; white-space:nowrap;
+  letter-spacing:1.5px; text-transform:uppercase;
+}
+.current-file-label{
+  font-family: var(--font-mono); font-size:11.5px; color: var(--on-surface-variant);
+  background: var(--surface-container-high); border-radius:12px; padding:4px 10px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;
+}
+.current-file-label:empty{display:none;}
+.search-wrap{flex:1; position:relative; max-width:420px;}
+.search-wrap input{
+  width:100%; background: var(--surface-container-high);
+  border:1px solid var(--outline); border-radius: 24px;
+  padding: 10px 14px 10px 38px; color:var(--on-surface); font-size:14px; outline:none;
+}
+.search-wrap input:focus{border-color:var(--primary);}
+.search-wrap svg{position:absolute; left:12px; top:50%; transform:translateY(-50%); width:16px; height:16px; fill:var(--on-surface-variant);}
+.topbar-spacer{flex:1;}
+.icon-btn{
+  width:40px; height:40px; border-radius:50%; border:none;
+  background:transparent; color:var(--on-surface-variant);
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; transition: background .12s;
+}
+.icon-btn:hover{background: var(--surface-container-high); color:var(--on-surface);}
+.icon-btn svg{width:20px; height:20px; fill:currentColor;}
+
+.content{flex:1; padding: 20px; max-width:1400px; width:100%; margin:0 auto; padding-bottom:100px;}
+.empty-state{
+  text-align:center; padding: 80px 20px; color:var(--on-surface-variant);
+}
+.empty-state svg{width:56px; height:56px; fill:var(--outline); margin-bottom:16px;}
+.empty-state h3{font-family:var(--font-display); color:var(--on-surface); font-weight:700; letter-spacing:1px; text-transform:uppercase; font-size:15px;}
+
+.entry-grid{display:grid; grid-template-columns: repeat(auto-fill, minmax(360px,1fr)); gap:16px;}
+
+.type-filter-row{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px;}
+.chip{
+  border:1px solid var(--outline); background:transparent; color:var(--on-surface-variant);
+  border-radius:20px; padding:7px 16px; font-size:13px; cursor:pointer;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.chip:hover{background:var(--surface-container-high);}
+.chip.active{background:var(--primary-container); color:var(--on-primary-container); border-color:var(--primary-container);}
+
+.type-select-row{display:flex; gap:8px; margin-bottom:20px;}
+.seg-btn{
+  flex:1; border:1px solid var(--outline); background:var(--surface-container-high);
+  color:var(--on-surface-variant); border-radius:var(--radius-s); padding:10px; font-size:13.5px;
+  cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.seg-btn.active{background:var(--primary-container); color:var(--on-primary-container); border-color:var(--primary-container);}
+
+.type-badge{
+  font-size:10.5px; text-transform:uppercase; letter-spacing:.6px; font-weight:600;
+  color:var(--on-surface-variant); background:var(--surface-container-highest);
+  border-radius:8px; padding:3px 8px; white-space:nowrap; flex-shrink:0;
+}
+
+.tag-input-box{
+  display:flex; flex-wrap:wrap; gap:6px; align-items:center;
+  background:var(--surface-container-high); border:1px solid var(--outline);
+  border-radius: var(--radius-s); padding:8px 10px; min-height:44px; margin-bottom:18px;
+}
+.tag-input-box:focus-within{border-color:var(--primary); border-width:2px; padding:7px 9px;}
+.tag-input-box .field-label{
+  font-size:11px; color:var(--on-surface-variant); text-transform:uppercase; letter-spacing:.5px;
+  width:100%; margin-bottom:2px;
+}
+.tag-chip{
+  display:inline-flex; align-items:center; gap:4px; background:var(--secondary-container);
+  color:var(--on-secondary-container); border-radius:14px; padding:4px 4px 4px 10px; font-size:12px;
+}
+.tag-chip button{background:none; border:none; color:inherit; cursor:pointer; font-size:14px; line-height:1; padding:2px 4px;}
+#tagInputField{flex:1; min-width:100px; background:none; border:none; outline:none; color:var(--on-surface); font-size:13.5px; padding:4px 2px;}
+
+.tag-filter-row{display:flex; gap:8px; flex-wrap:wrap; margin: -6px 0 18px;}
+
+.attachment-section{margin-bottom:18px;}
+.attachment-section .field-label{
+  font-size:11px; color:var(--on-surface-variant); text-transform:uppercase; letter-spacing:.5px;
+  display:block; margin-bottom:8px;
+}
+.attachment-item{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  background:var(--surface-container-high); border-radius:var(--radius-s);
+  padding:8px 8px 8px 12px; margin-bottom:6px; font-size:13px;
+}
+.attachment-item .att-name{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;}
+.attachment-item .att-size{color:var(--on-surface-variant); font-size:11.5px; flex-shrink:0;}
+.attachment-item .att-actions{display:flex; gap:2px; flex-shrink:0;}
+
+.attachment-inline-list{margin-top:8px;}
+.attachment-inline-item{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  background:var(--surface-container-high); border-radius:var(--radius-s);
+  padding:8px 8px 8px 12px; margin-top:6px; font-size:12.5px;
+}
+.attachment-inline-item .att-name{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;}
+
+.entry-tags{display:flex; flex-wrap:wrap; gap:5px; margin-top:10px;}
+.entry-tags .tag-pill{
+  font-size:10.5px; background:var(--secondary-container); color:var(--on-secondary-container);
+  border-radius:10px; padding:3px 9px;
+}
+
+.totp-params-hint{
+  font-family:var(--font-mono); font-size:11.5px; color:var(--on-surface-variant);
+  margin:-10px 0 14px; padding-left:2px;
+}
+
+.qr-dropzone{
+  border:1.5px dashed var(--outline); border-radius: var(--radius-s);
+  padding:16px 12px; text-align:center; font-size:12.5px; color:var(--on-surface-variant);
+  cursor:pointer; margin: -8px 0 18px; transition: border-color .12s, background .12s;
+}
+.qr-dropzone:hover{border-color:var(--primary); background: var(--surface-container-high);}
+.qr-dropzone.dragover{border-color:var(--primary); background: var(--primary-container); color:var(--on-primary-container);}
+
+.entry-card{
+  background: var(--surface-container);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-m);
+  padding: 16px 16px 14px;
+  position:relative;
+  transition: border-color .15s, transform .1s;
+}
+.entry-card:hover{border-color: var(--outline);}
+.entry-card::after{
+  /* Lochrand-Motiv wie eine Schließfach-Quittung */
+  content:"";
+  position:absolute; left:16px; right:16px; top:0;
+  height:1px;
+  background-image: linear-gradient(90deg, var(--outline-variant) 50%, transparent 0);
+  background-size: 8px 1px;
+  opacity:.6;
+}
+.entry-head{display:flex; align-items:flex-start; justify-content:space-between; gap:8px;}
+.entry-title{font-weight:600; font-size:15.5px; margin:0 0 2px; word-break:break-word;}
+.entry-user{font-size:12.5px; color:var(--on-surface-variant); word-break:break-word;}
+.entry-menu-btn{flex-shrink:0;}
+
+.entry-row{
+  display:flex; align-items:center; justify-content:space-between;
+  margin-top:12px; background:var(--surface-container-high);
+  border-radius: var(--radius-s); padding: 8px 10px 8px 12px;
+}
+.entry-row .val{
+  font-family: var(--font-mono); font-size:13.5px; letter-spacing:.3px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;
+  color:var(--on-surface);
+}
+.entry-row.masked .val{letter-spacing:2px;}
+.row-actions{display:flex; gap:2px; flex-shrink:0;}
+.mini-btn{
+  width:30px; height:30px; border-radius:50%; border:none; background:transparent;
+  color:var(--on-surface-variant); cursor:pointer; display:flex; align-items:center; justify-content:center;
+}
+.mini-btn:hover{background: var(--surface-container-highest); color:var(--primary);}
+.mini-btn svg{width:15px; height:15px; fill:currentColor;}
+
+.totp-block{margin-top:12px; display:flex; align-items:center; gap:12px; background:var(--secondary-container); border-radius:var(--radius-s); padding:10px 12px;}
+.totp-dial{width:34px; height:34px; flex-shrink:0; position:relative;}
+.totp-dial svg{width:100%; height:100%; transform:rotate(-90deg);}
+.totp-dial .track{fill:none; stroke: rgba(255,255,255,.12); stroke-width:3;}
+.totp-dial .prog{fill:none; stroke: var(--on-secondary-container); stroke-width:3; stroke-linecap:round; transition: stroke-dashoffset 1s linear;}
+.totp-code{font-family:var(--font-mono); font-size:19px; font-weight:600; letter-spacing:2px; color:var(--on-secondary-container); flex:1;}
+.totp-copy{color:var(--on-secondary-container);}
+
+.fab{
+  position:fixed; right:24px;
+  bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+  width:60px; height:60px; border-radius: 20px;
+  background: var(--primary); color: var(--on-primary);
+  border:none; box-shadow: 0 6px 20px rgba(0,0,0,.4);
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+  transition: transform .1s, filter .12s;
+  z-index:30;
+}
+.fab:hover{filter:brightness(1.06);}
+.fab:active{transform:scale(.94);}
+.fab svg{width:26px; height:26px; fill:currentColor;}
+
+/* ---------- Dialoge ---------- */
+.overlay{
+  display:none; position:fixed; inset:0; z-index:50;
+  background: rgba(6,8,7,.6); backdrop-filter: blur(2px);
+  align-items:center; justify-content:center; padding:20px;
+}
+.overlay.show{display:flex;}
+.dialog{
+  width:100%; max-width:480px; max-height:88vh; overflow-y:auto;
+  background: var(--surface-container-high);
+  border-radius: var(--radius-l);
+  padding: 26px 26px 22px;
+  border:1px solid var(--outline-variant);
+  box-shadow: 0 16px 50px rgba(0,0,0,.5);
+}
+.dialog h3{font-family:var(--font-display); font-weight:700; font-size:16px; letter-spacing:1px; text-transform:uppercase; margin:0 0 20px;}
+.dialog-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:8px;}
+.gen-row{display:flex; gap:8px; align-items:center; margin: -8px 0 18px;}
+.gen-row input[type=range]{flex:1; accent-color: var(--primary);}
+.gen-row span{font-size:12px; color:var(--on-surface-variant); width:26px; text-align:right;}
+.check-row{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--on-surface-variant); margin-bottom:4px;}
+.check-row input{accent-color:var(--primary);}
+.pw-eval{height:4px; border-radius:2px; background:var(--outline-variant); margin: -10px 0 18px; overflow:hidden;}
+.pw-eval-fill{height:100%; width:0%; background:var(--error); transition: all .2s;}
+
+.toast{
+  position:fixed; bottom:24px; left:50%; transform: translateX(-50%) translateY(100px);
+  background: var(--surface-container-highest); color:var(--on-surface);
+  padding: 12px 20px; border-radius: 24px; font-size:13.5px;
+  box-shadow:0 8px 24px rgba(0,0,0,.4); z-index:100;
+  transition: transform .25s ease;
+  border:1px solid var(--outline-variant);
+}
+.toast.show{transform: translateX(-50%) translateY(0);}
+
+.menu-pop{
+  position:absolute; z-index:40; background:var(--surface-container-highest);
+  border:1px solid var(--outline-variant); border-radius:var(--radius-s);
+  box-shadow:0 8px 24px rgba(0,0,0,.4); overflow:hidden; min-width:150px;
+  display:none;
+}
+.menu-pop.show{display:block;}
+.menu-pop button{
+  display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+  background:none; border:none; color:var(--on-surface); padding:11px 14px;
+  font-size:13.5px; cursor:pointer;
+}
+.menu-pop button:hover{background:var(--surface-container-high);}
+.menu-pop button.danger{color:#ffb4ab;}
+.menu-pop svg{width:15px;height:15px;fill:currentColor;}
+
+.more-menu-wrap{position:relative; display:none; flex-shrink:0;}
+.more-menu-wrap .menu-pop{right:0; left:auto; top:calc(100% + 6px); min-width:220px;}
+.more-menu-wrap .menu-pop button{gap:10px; font-size:13.5px;}
+.more-menu-backdrop{
+  display:none; position:fixed; inset:0; background:rgba(6,8,7,.55);
+  z-index:150; backdrop-filter: blur(1px);
+}
+.more-menu-backdrop.show{display:block;}
+@media (min-width: 901px){
+  .more-menu-backdrop{display:none !important;}
+}
+
+@media (max-width: 900px){
+  .topbar-collapsible{display:none !important;}
+  .more-menu-wrap{display:block;}
+  /* "Mehr"-Menü wird auf schmalen Bildschirmen zum Bottom-Sheet: volle Breite,
+     am unteren Rand, scrollbar statt einer kleinen Ecken-Dropdown-Liste. */
+  .more-menu-wrap .menu-pop{
+    position:fixed; left:0; right:0; top:auto; bottom:0;
+    border-radius: 20px 20px 0 0;
+    min-width:0; width:100%;
+    max-height:70vh; max-height:70dvh; overflow-y:auto;
+    box-shadow: 0 -8px 30px rgba(0,0,0,.5);
+    padding-top:10px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    z-index:200;
+  }
+  .more-menu-wrap .menu-pop::before{
+    content:""; display:block; width:36px; height:4px; border-radius:2px;
+    background: var(--outline); margin: 2px auto 10px;
+  }
+  .more-menu-wrap .menu-pop button{padding:14px 20px; font-size:14.5px;}
+}
+@media (max-width: 560px){
+  .content{padding:14px; padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));}
+  .entry-grid{grid-template-columns:1fr;}
+  .topbar h2{display:none;}
+  .current-file-label{max-width:110px;}
+}
+@media (prefers-reduced-motion: reduce){
+  * {transition:none !important;}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ SPERR-BILDSCHIRM ============ -->
+<div id="lockScreen">
+  <div class="lock-card">
+    <button class="lang-toggle" id="langToggleLock" type="button">EN</button>
+    <div class="dial">
+      <svg viewBox="0 0 24 24"><path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm0 2a3 3 0 0 1 3 3v3H9V6a3 3 0 0 1 3-3zm0 10a2 2 0 0 1 1 3.73V18a1 1 0 0 1-2 0v-1.27A2 2 0 0 1 12 13z"></path></svg>
+    </div>
+    <h1 class="brand">MMO Vault</h1>
+    <p class="subtitle" data-i18n="subtitle">Lokaler Passwortmanager · AES-256-GCM · 2FA/TOTP</p>
+
+    <div id="lockStatus" class="status-msg"></div>
+
+        <div id="unlockView">
+      <div id="fileStep">
+        <div class="lock-secondary-row" id="rememberedFileRow" style="display:none;">
+          <button class="btn btn-tonal" id="btnUseRememberedFile"><span class="remembered-file-label" id="rememberedFileLabel" data-i18n="last_file_default">Letzte Datei laden</span></button>
+          <button class="btn btn-outline btn-remove" id="btnForgetRememberedFile" data-i18n-title="forget_link" title="Verknüpfung entfernen">✕</button>
+        </div>
+        <div class="lock-secondary-row">
+          <button class="btn btn-outline" id="btnLoadFile" data-i18n="load_file">Datei laden</button>
+          <button class="btn btn-outline" id="btnNewVault" data-i18n="new_file">Neue Datei anlegen</button>
+        </div>
+      </div>
+
+      <div id="passwordStep" style="display:none;">
+        <div class="field">
+          <input type="password" id="unlockPassword" placeholder=" " autocomplete="current-password">
+          <label for="unlockPassword" data-i18n="master_password">Master-Passwort</label>
+        </div>
+        <div class="lock-actions">
+          <button class="btn btn-filled btn-block" id="btnUnlock" data-i18n="unlock">Entsperren</button>
+        </div>
+        <button class="btn btn-text btn-block" id="btnBackToFileStep" data-i18n="choose_other_file" style="margin-top:10px;">← Andere Datei wählen</button>
+      </div>
+
+      <input type="file" id="fileInput" accept=".json,.vault" style="display:none">
+    </div>
+
+    <div id="createView" style="display:none;">
+      <div class="field">
+        <input type="password" id="newPassword" placeholder=" " autocomplete="new-password">
+        <label for="newPassword" data-i18n="new_master_password">Neues Master-Passwort</label>
+      </div>
+      <div class="field">
+        <input type="password" id="newPasswordConfirm" placeholder=" " autocomplete="new-password">
+        <label for="newPasswordConfirm" data-i18n="confirm_master_password">Master-Passwort bestätigen</label>
+      </div>
+      <div class="pw-eval"><div class="pw-eval-fill" id="pwEvalFill"></div></div>
+      <div class="lock-actions">
+        <button class="btn btn-filled btn-block" id="btnCreateVault" data-i18n="create_vault">Vault erstellen</button>
+        <button class="btn btn-text" id="btnBackToUnlock" data-i18n="back">Zurück</button>
+      </div>
+    </div>
+
+    <p class="hint" id="fsaHint">Dein Browser unterstützt direktes Speichern in eine Datei. Beim ersten Speichern wirst du nach einem Speicherort gefragt.</p>
+    <button class="btn btn-text btn-block" id="btnAboutLock" data-i18n="about_link" style="margin-top:4px;">ℹ️ Über MMO Vault</button>
+  </div>
+</div>
+
+<!-- ============ HAUPT-APP ============ -->
+<div id="appScreen">
+  <div class="topbar">
+    <h2>MMO Vault</h2>
+    <span class="current-file-label" id="currentFileLabel"></span>
+    <div class="search-wrap">
+      <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 5L20.49 19zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"></path></svg>
+      <input type="text" id="searchInput" data-i18n-placeholder="search_entries" data-i18n-aria="search_entries" placeholder="Einträge durchsuchen…">
+    </div>
+    <div class="topbar-spacer"></div>
+    <button class="lang-toggle-topbar topbar-collapsible" id="langToggleTopbar" type="button">EN</button>
+    <button class="icon-btn topbar-collapsible" id="btnSave" data-i18n-title="save_file_title" title="Speichern" style="position:relative;">
+      <svg viewBox="0 0 24 24"><path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7zm-5 16a3 3 0 1 1 0-6 3 3 0 0 1 0 6zM15 9H6V5h9z"></path></svg>
+      <span class="dirty-dot" id="saveDirtyDot" style="display:none;"></span>
+    </button>
+    <button class="icon-btn topbar-collapsible" id="btnLock" data-i18n-title="lock_title" title="Sperren">
+      <svg viewBox="0 0 24 24"><path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm0 2a3 3 0 0 1 3 3v3H9V6a3 3 0 0 1 3-3z"></path></svg>
+    </button>
+    <button class="autolock-indicator topbar-collapsible" id="btnAutoLockSettings" data-i18n-title="autolock_title" title="Auto-Sperre">
+      <svg viewBox="0 0 24 24"><path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm0 2a3 3 0 0 1 3 3v3H9V6a3 3 0 0 1 3-3zm.5 6.5v3.25l2.5 1.5-.65 1.06L11 15.75V9.5z"></path></svg>
+      <span id="autoLockCountdown">5:00</span>
+    </button>
+    <button class="icon-btn topbar-collapsible" id="btnChangePassword" data-i18n-title="change_password_title" title="Master-Passwort ändern">
+      <svg viewBox="0 0 24 24"><path d="M12.65 10a5.5 5.5 0 1 0 0 4h2.35v3h3v-3H21v-4zM7.5 13a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"></path></svg>
+    </button>
+    <button class="icon-btn topbar-collapsible" id="btnHistory" data-i18n-title="history_title" title="Änderungsverlauf">
+      <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6a7 7 0 1 1 2.05 4.95l-1.42 1.42A9 9 0 1 0 13 3zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8z"></path></svg>
+    </button>
+    <button class="icon-btn topbar-collapsible" id="btnAbout" data-i18n-title="about_title" title="Über MMO Vault">
+      <svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2zm0 4h2v6h-2zM12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z"></path></svg>
+    </button>
+
+    <div class="more-menu-wrap" id="moreMenuWrap">
+      <button class="icon-btn more-menu-btn" id="btnMoreMenu" data-i18n-title="more_title" title="Mehr">
+        <svg viewBox="0 0 24 24"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"></path></svg>
+      </button>
+      <div class="more-menu-backdrop" id="moreMenuBackdrop"></div>
+      <div class="menu-pop" id="moreMenu">
+        <button id="moreLangToggle">🌐 <span id="moreLangLabel">Sprache: DE → EN</span></button>
+        <button id="moreSave">💾 <span data-i18n="save_file_title">Speichern</span> <span class="dirty-dot-inline" id="moreSaveDirtyDot" style="display:none;"></span></button>
+        <button id="moreLock">🔒 <span data-i18n="lock_title">Sperren</span></button>
+        <button id="moreAutoLock">⏱️ <span data-i18n="autolock_title">Auto-Sperre</span></button>
+        <button id="moreChangePassword">🔐 <span data-i18n="change_password_title">Master-Passwort ändern</span></button>
+        <button id="moreHistory">🕐 <span data-i18n="history_title">Änderungsverlauf</span></button>
+        <button id="moreAbout">ℹ️ <span data-i18n="about_title">Über MMO Vault</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- Die Typ-Chips werden von renderTypeFilterChips() aus RECORD_TYPES erzeugt. -->
+    <div class="type-filter-row" id="typeFilterRow">
+      <button class="chip active" data-type="all" data-i18n="filter_all">Alle</button>
+    </div>
+    <div class="tag-filter-row" id="tagFilterRow" style="display:none;"></div>
+    <div id="emptyState" class="empty-state" style="display:none;">
+      <svg viewBox="0 0 24 24"><path d="M20 6h-4V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zM10 4h4v2h-4z"></path></svg>
+      <h3 id="emptyStateTitle">Noch keine Einträge</h3>
+      <p id="emptyStateText">Lege deinen ersten Eintrag über den Button unten rechts an.</p>
+    </div>
+    <div id="entryGrid" class="entry-grid"></div>
+  </div>
+
+  <button class="fab" id="btnAddEntry" data-i18n-title="new_entry_title" title="Neuer Eintrag">
+    <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"></path></svg>
+  </button>
+</div>
+
+<!-- ============ ENTRY-DIALOG ============ -->
+<div class="overlay" id="entryDialogOverlay">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="entryDialogTitle">
+    <h3 id="entryDialogTitle" data-i18n="new_entry">Neuer Eintrag</h3>
+    <input type="hidden" id="entryId">
+    <input type="hidden" id="entryType" value="zugang">
+
+    <div class="type-select-row" id="typeSelectRow">
+      <button type="button" class="seg-btn active" data-type="zugang" data-i18n="type_zugang">🔑 Zugang</button>
+      <button type="button" class="seg-btn" data-type="freitext" data-i18n="type_freitext">📝 Freitext</button>
+    </div>
+
+    <div class="field">
+      <input type="text" id="entryTitle" placeholder=" ">
+      <label for="entryTitle" data-i18n="entry_title_label">Titel (z. B. Google, Bank)</label>
+    </div>
+
+    <div id="fieldsZugang">
+      <div class="field">
+        <input type="text" id="entryUrl" placeholder=" " autocomplete="off">
+        <label for="entryUrl" data-i18n="entry_url_label">URL (optional)</label>
+      </div>
+      <div class="field">
+        <input type="text" id="entryUsername" placeholder=" " autocomplete="off">
+        <label for="entryUsername" data-i18n="entry_username_label">Benutzername / E-Mail</label>
+      </div>
+      <div class="field">
+        <input type="text" id="entryPassword" placeholder=" " autocomplete="off">
+        <label for="entryPassword" data-i18n="entry_password_label">Passwort</label>
+      </div>
+      <div class="gen-row">
+        <button class="btn btn-text" id="btnGenPw" data-i18n="generate_btn" style="padding:8px 10px;">🎲 Generieren</button>
+        <input type="range" id="genLength" min="8" max="48" value="20" data-i18n-aria="gen_length_label">
+        <span id="genLengthVal">20</span>
+      </div>
+      <div class="check-row"><input type="checkbox" id="genSymbols" checked data-i18n-aria="include_symbols"> <span data-i18n="include_symbols">Sonderzeichen einbeziehen</span></div>
+
+      <div class="field">
+        <input type="text" id="entryTotp" placeholder=" " autocomplete="off">
+        <label for="entryTotp" data-i18n="totp_label">2FA-Secret (Base32, optional)</label>
+      </div>
+      <p class="totp-params-hint" id="totpParamsHint" style="display:none;"></p>
+      <div class="qr-dropzone" id="qrDropzone" tabindex="0" role="button">
+        <input type="file" id="qrFileInput" accept="image/*" style="display:none">
+        <span data-i18n="qr_dropzone">📷 QR-Code hierher ziehen oder klicken zum Auswählen</span>
+      </div>
+    </div>
+
+    <div class="field" id="notesFieldWrap">
+      <textarea id="entryNotes" placeholder=" " rows="2"></textarea>
+      <label id="notesFieldLabel" for="entryNotes" data-i18n="notes_label">Notizen</label>
+    </div>
+
+    <div class="tag-input-box" id="tagInputBox">
+      <span class="field-label" data-i18n="tags_label">Tags</span>
+      <div id="tagChipsContainer" style="display:contents;"></div>
+      <input type="text" id="tagInputField" data-i18n-placeholder="tag_input_placeholder" data-i18n-aria="tags_label" placeholder="Tag eingeben + Enter">
+    </div>
+
+    <div class="attachment-section">
+      <span class="field-label" data-i18n="attachments_label">Dateianhänge</span>
+      <div id="attachmentList"></div>
+      <button type="button" class="btn btn-text" id="btnAddAttachment" data-i18n="add_attachment_btn" style="padding:8px 10px;">📎 Datei anhängen</button>
+      <input type="file" id="attachmentFileInput" multiple style="display:none">
+    </div>
+
+    <div class="dialog-actions">
+      <button class="btn btn-text" id="btnCancelEntry" data-i18n="cancel">Abbrechen</button>
+      <button class="btn btn-filled" id="btnSaveEntry" data-i18n="save">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Kontext-Menü ============ -->
+<div class="menu-pop" id="entryMenu">
+  <button id="menuEdit"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75z"></path></svg> <span data-i18n="edit">Bearbeiten</span></button>
+  <button id="menuDelete" class="danger"><svg viewBox="0 0 24 24"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z"></path></svg> <span data-i18n="delete">Löschen</span></button>
+</div>
+
+<!-- ============ Master-Passwort ändern ============ -->
+<div class="overlay" id="changePasswordOverlay">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="changePasswordTitle">
+    <h3 id="changePasswordTitle" data-i18n="change_password_h">Master-Passwort ändern</h3>
+    <div class="field">
+      <input type="password" id="cpCurrentPassword" placeholder=" " autocomplete="current-password">
+      <label for="cpCurrentPassword" data-i18n="current_master_password">Aktuelles Master-Passwort</label>
+    </div>
+    <div class="field">
+      <input type="password" id="cpNewPassword" placeholder=" " autocomplete="new-password">
+      <label for="cpNewPassword" data-i18n="new_master_password">Neues Master-Passwort</label>
+    </div>
+    <div class="field">
+      <input type="password" id="cpNewPasswordConfirm" placeholder=" " autocomplete="new-password">
+      <label for="cpNewPasswordConfirm" data-i18n="confirm_new_master_password">Neues Master-Passwort bestätigen</label>
+    </div>
+    <div class="pw-eval"><div class="pw-eval-fill" id="cpEvalFill"></div></div>
+    <div id="cpStatus" class="status-msg"></div>
+    <p class="hint" data-i18n="change_password_hint" style="text-align:left; margin:4px 0 0;">Nach der Änderung wird der Vault sofort mit dem neuen Passwort neu verschlüsselt und automatisch als Datei gespeichert.</p>
+    <div class="dialog-actions">
+      <button class="btn btn-text" id="btnCancelChangePassword" data-i18n="cancel">Abbrechen</button>
+      <button class="btn btn-filled" id="btnConfirmChangePassword" data-i18n="change_btn">Ändern</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Ungespeicherte Änderungen ============ -->
+<div class="overlay" id="unsavedChangesOverlay">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="unsavedTitle">
+    <h3 id="unsavedTitle" data-i18n="unsaved_h">Ungespeicherte Änderungen</h3>
+    <p style="font-size:13.5px; line-height:1.6; color:var(--on-surface-variant); margin:0 0 20px;" data-i18n="unsaved_text">Es gibt Änderungen, die noch nicht in der Datei gespeichert sind. Möchtest du vor dem Sperren speichern?</p>
+    <div class="dialog-actions" style="flex-wrap:wrap; justify-content:flex-end;">
+      <button class="btn btn-text" id="btnUnsavedCancel" data-i18n="cancel">Abbrechen</button>
+      <button class="btn btn-outline" id="btnUnsavedDiscard" data-i18n="unsaved_discard" style="color:var(--error); border-color:var(--error);">Ohne Speichern sperren</button>
+      <button class="btn btn-filled" id="btnUnsavedSave" data-i18n="unsaved_save">Speichern &amp; Sperren</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Auto-Sperre ============ -->
+<div class="overlay" id="autoLockOverlay" data-dismissable="true">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="autoLockTitle">
+    <h3 id="autoLockTitle" data-i18n="autolock_h">Auto-Sperre</h3>
+    <p class="hint" data-i18n="autolock_hint" style="text-align:left; margin:0 0 16px;">Sperrt den Vault automatisch nach dieser Zeit ohne Aktivität. Wird mit im Vault gespeichert.</p>
+    <div class="field">
+      <select id="autoLockSelect" data-i18n-aria="autolock_title">
+        <option value="1">1 min</option>
+        <option value="5">5 min</option>
+        <option value="10">10 min</option>
+        <option value="15">15 min</option>
+        <option value="30">30 min</option>
+        <option value="0" data-i18n="autolock_never">Nie</option>
+      </select>
+    </div>
+    <div class="dialog-actions">
+      <button class="btn btn-filled" id="btnCloseAutoLock" data-i18n="close">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Änderungsverlauf ============ -->
+<div class="overlay" id="historyOverlay" data-dismissable="true">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="historyTitle">
+    <h3 id="historyTitle" data-i18n="history_h">Änderungsverlauf</h3>
+    <div id="historyList" style="max-height:50vh; overflow-y:auto; margin-bottom:16px;"></div>
+    <div class="dialog-actions">
+      <button class="btn btn-filled" id="btnCloseHistory" data-i18n="close">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Über ============ -->
+<div class="overlay" id="aboutOverlay" data-dismissable="true">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+    <div style="display:flex; align-items:center; gap:14px; margin-bottom:18px;">
+      <div class="dial" style="width:56px; height:56px; margin:0; flex-shrink:0;">
+        <svg viewBox="0 0 24 24" style="width:24px; height:24px;"><path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm0 2a3 3 0 0 1 3 3v3H9V6a3 3 0 0 1 3-3zm0 10a2 2 0 0 1 1 3.73V18a1 1 0 0 1-2 0v-1.27A2 2 0 0 1 12 13z"></path></svg>
+      </div>
+      <div>
+        <h3 id="aboutTitle" style="margin:0;">MMO Vault</h3>
+        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.1.0 · lokaler Passwortmanager</p>
+      </div>
+    </div>
+
+    <p data-i18n="about_p1" style="font-size:13.5px; line-height:1.6; color:var(--on-surface); margin:0 0 14px;">Entwickelt von <strong>Michael Müller</strong>. Teil der <strong>MMO</strong>-Toolreihe für Eigenprojekte.</p>
+
+    <p data-i18n="about_p2" style="font-size:13px; line-height:1.7; color:var(--on-surface-variant); margin:0 0 14px;">Läuft vollständig lokal im Browser als einzelne HTML-Datei — keine externen Server, keine CDN-Abhängigkeiten, keine Telemetrie, per Content-Security-Policy erzwungen. Verschlüsselung per AES-256-GCM (PBKDF2-SHA256, 600.000 Iterationen), TOTP-2FA nach RFC 6238, QR-Code-Import über die native BarcodeDetector-API.</p>
+
+    <p data-i18n="about_p3" style="font-size:12px; line-height:1.6; color:var(--on-surface-variant); margin:0;">Keine Garantie, keine Gewährleistung — nutz es auf eigene Verantwortung, wie jedes selbstgebaute Werkzeug. Regelmäßige Backups der Vault-Datei sind Pflicht, nicht optional.</p>
+
+    <div class="dialog-actions">
+      <button class="btn btn-filled" id="btnCloseAbout" data-i18n="close">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   MMO VAULT — lokaler Passwortmanager
+   AES-256-GCM Verschlüsselung + RFC 6238 TOTP, keine externen
+   Requests, keine Abhängigkeiten. Alle Daten bleiben im Browser
+   bzw. in der lokal gespeicherten Vault-Datei.
+   ============================================================ */
+
+const PBKDF2_ITERATIONS = 600000;
+const DEFAULT_AUTO_LOCK_MINUTES = 5;
+/* Plausibilitätsgrenzen für die Iterationszahl aus einer geladenen Datei: der Header ist
+   nicht authentifiziert, ein manipulierter Wert würde den Tab sonst minutenlang blockieren. */
+const MIN_FILE_ITERATIONS = 1000;
+const MAX_FILE_ITERATIONS = 5000000;
+/* Zeit, nach der ein kopiertes Geheimnis wieder aus der Zwischenablage entfernt wird. */
+const CLIPBOARD_CLEAR_SECONDS = 30;
+const TOTP_DEFAULTS = { digits: 6, period: 30, algorithm: 'SHA-1' };
+
+/* ---------- Übersetzungen (DE/EN) ---------- */
+let currentLang = 'de';
+const I18N = {
+  de: {
+    subtitle: 'Lokaler Passwortmanager · AES-256-GCM · 2FA/TOTP',
+    master_password: 'Master-Passwort',
+    unlock: 'Entsperren',
+    choose_other_file: '← Andere Datei wählen',
+    forget_link: 'Verknüpfung entfernen',
+    load_file: 'Datei laden',
+    new_file: 'Neue Datei anlegen',
+    new_master_password: 'Neues Master-Passwort',
+    confirm_master_password: 'Master-Passwort bestätigen',
+    create_vault: 'Vault erstellen',
+    back: 'Zurück',
+    about_link: 'ℹ️ Über MMO Vault',
+    search_entries: 'Einträge durchsuchen…',
+    export_file: 'Als verschlüsselte Datei exportieren',
+    change_password_title: 'Master-Passwort ändern',
+    history_title: 'Änderungsverlauf',
+    about_title: 'Über MMO Vault',
+    lock_title: 'Sperren',
+    save_file_title: 'Speichern',
+    toast_saved_file: 'Vault gespeichert.',
+    toast_saved_download: 'Vault gespeichert (als Download).',
+    more_title: 'Mehr',
+    autolock_title: 'Auto-Sperre',
+    autolock_h: 'Auto-Sperre',
+    autolock_hint: 'Sperrt den Vault automatisch nach dieser Zeit ohne Aktivität. Wird mit im Vault gespeichert.',
+    autolock_never: 'Nie',
+    autolock_set_toast: 'Auto-Sperre auf {min} Min. gesetzt.',
+    autolock_off_toast: 'Auto-Sperre deaktiviert.',
+    unsaved_h: 'Ungespeicherte Änderungen',
+    unsaved_text: 'Es gibt Änderungen, die noch nicht in der Datei gespeichert sind. Möchtest du vor dem Sperren speichern?',
+    unsaved_discard: 'Ohne Speichern sperren',
+    unsaved_save: 'Speichern & Sperren',
+    filter_all: 'Alle',
+    empty_title: 'Noch keine Einträge',
+    empty_text: 'Lege deinen ersten Eintrag über den Button unten rechts an.',
+    new_entry_title: 'Neuer Eintrag',
+    new_entry: 'Neuer Eintrag',
+    edit_entry: 'Eintrag bearbeiten',
+    type_zugang: '🔑 Zugang',
+    type_freitext: '📝 Freitext',
+    type_zugang_badge: 'Zugang',
+    type_freitext_badge: 'Freitext',
+    entry_title_label: 'Titel (z. B. Google, Bank)',
+    entry_url_label: 'URL (optional)',
+    entry_username_label: 'Benutzername / E-Mail',
+    entry_password_label: 'Passwort',
+    generate_btn: '🎲 Generieren',
+    gen_length_label: 'Passwortlänge',
+    include_symbols: 'Sonderzeichen einbeziehen',
+    totp_label: '2FA-Secret (Base32, optional)',
+    qr_dropzone: '📷 QR-Code hierher ziehen oder klicken zum Auswählen',
+    notes_label: 'Notizen',
+    content_label: 'Inhalt',
+    tags_label: 'Tags',
+    tag_input_placeholder: 'Tag eingeben + Enter',
+    attachments_label: 'Dateianhänge',
+    add_attachment_btn: '📎 Datei anhängen',
+    cancel: 'Abbrechen',
+    save: 'Speichern',
+    edit: 'Bearbeiten',
+    delete: 'Löschen',
+    change_password_h: 'Master-Passwort ändern',
+    current_master_password: 'Aktuelles Master-Passwort',
+    confirm_new_master_password: 'Neues Master-Passwort bestätigen',
+    change_password_hint: 'Nach der Änderung wird der Vault sofort mit dem neuen Passwort neu verschlüsselt und automatisch als Datei gespeichert.',
+    change_btn: 'Ändern',
+    history_h: 'Änderungsverlauf',
+    close: 'Schließen',
+    about_version: 'Version 1.1.0 · lokaler Passwortmanager',
+    about_p1: 'Entwickelt von <strong>Michael Müller</strong>. Teil der <strong>MMO</strong>-Toolreihe für Eigenprojekte.',
+    about_p2: 'Läuft vollständig lokal im Browser als einzelne HTML-Datei — keine externen Server, keine CDN-Abhängigkeiten, keine Telemetrie, per Content-Security-Policy erzwungen. Verschlüsselung per AES-256-GCM (PBKDF2-SHA256, 600.000 Iterationen), TOTP-2FA nach RFC 6238, QR-Code-Import über die native BarcodeDetector-API.',
+    about_p3: 'Keine Garantie, keine Gewährleistung — nutz es auf eigene Verantwortung, wie jedes selbstgebaute Werkzeug. Regelmäßige Backups der Vault-Datei sind Pflicht, nicht optional.',
+    tag_filter_all: '🏷️ Alle Tags',
+    open_tt: 'Öffnen',
+    copy_tt: 'Kopieren',
+    toggle_pw_tt: 'Anzeigen/Verbergen',
+    options_tt: 'Optionen',
+    copy_code_tt: 'Code kopieren',
+    download_tt: 'Herunterladen',
+    remove_tt: 'Entfernen',
+    last_file_prefix: 'Letzte Datei: ',
+    last_file_default: 'Letzte Datei laden',
+    history_empty: 'Noch keine Änderungen protokolliert.',
+    hist_vault_created: 'Vault erstellt',
+    hist_entry_created: 'Eintrag erstellt',
+    hist_entry_edited: 'Eintrag bearbeitet',
+    hist_entry_deleted: 'Eintrag gelöscht',
+    hist_password_changed: 'Master-Passwort geändert',
+    hist_autolock_changed: 'Auto-Sperre geändert',
+    files_count: ' Datei(en)',
+    toast_pw_copied: 'Passwort kopiert — Zwischenablage wird in {sec} s geleert.',
+    toast_url_copied: 'URL kopiert',
+    toast_user_copied: 'Benutzername kopiert',
+    toast_totp_copied: '2FA-Code kopiert — Zwischenablage wird in {sec} s geleert.',
+    toast_copy_failed: 'Kopieren fehlgeschlagen',
+    toast_clipboard_cleared: 'Zwischenablage geleert.',
+    toast_entry_deleted: 'Eintrag gelöscht — nicht vergessen zu speichern.',
+    toast_entry_saved: 'Eintrag gespeichert im Vault-Speicher — jetzt „Speichern"-Symbol oben nutzen, um die Datei zu aktualisieren.',
+    toast_title_required: 'Bitte einen Titel angeben.',
+    confirm_delete_entry: 'wirklich löschen?',
+    fsa_hint_supported: 'Dein Browser unterstützt direktes Speichern in eine Datei. Beim ersten Speichern wirst du nach einem Speicherort gefragt.',
+    fsa_hint_fallback: 'Dieser Browser lädt die Vault-Datei als Download herunter. Bitte an einem sicheren Ort ablegen und regelmäßig sichern.',
+    empty_filtered_title: 'Keine Treffer',
+    empty_filtered_text: 'Kein Eintrag passt zu Suche und Filter. Filter zurücksetzen oder Suchbegriff ändern.',
+    untitled: '(ohne Titel)',
+    err_pw_min: 'Master-Passwort sollte mindestens 8 Zeichen haben.',
+    err_pw_mismatch: 'Die Passwörter stimmen nicht überein.',
+    err_pw_required: 'Bitte Master-Passwort eingeben.',
+    err_wrong_pw: 'Falsches Master-Passwort oder beschädigte Daten.',
+    toast_vault_created: 'Neuer Vault erstellt — jetzt „Speichern" nicht vergessen!',
+    toast_load_file_first: 'Bitte zuerst eine Vault-Datei laden.',
+    err_no_linked_file: 'Keine verknüpfte Datei gefunden.',
+    err_file_permission: 'Zugriff auf die Datei wurde nicht erlaubt.',
+    err_invalid_vault: 'Diese Datei ist keine gültige Vault-Datei.',
+    err_file_unreadable: 'Die verknüpfte Datei ist nicht mehr lesbar (häufig bei Cloud-Sync-Ordnern, z. B. Nextcloud). Verknüpfung entfernt — bitte über „Datei laden" neu auswählen.',
+    err_file_open: 'Datei konnte nicht geöffnet werden: ',
+    err_file_read: 'Datei konnte nicht gelesen werden: ',
+    info_fsa_blocked: 'Datei-Auswahl in dieser eingebetteten Ansicht eingeschränkt — nutze stattdessen den klassischen Auswahldialog. Für „Letzte Datei"/Direktspeichern die Datei außerhalb der Vorschau (heruntergeladen) im Browser öffnen.',
+    status_file_loaded: 'Datei geladen: ',
+    toast_link_forgotten: 'Verknüpfung zur Datei vergessen.',
+    toast_autolocked_dirty: 'Automatisch gesperrt — ungespeicherte Änderungen gingen ggf. verloren.',
+    err_current_pw_required: 'Bitte das aktuelle Master-Passwort eingeben.',
+    err_new_pw_min: 'Das neue Master-Passwort sollte mindestens 8 Zeichen haben.',
+    err_new_pw_mismatch: 'Die neuen Passwörter stimmen nicht überein.',
+    err_new_pw_same: 'Das neue Passwort sollte sich vom aktuellen unterscheiden.',
+    status_checking_pw: 'Prüfe aktuelles Passwort…',
+    status_reencrypting: 'Verschlüssele neu…',
+    err_current_pw_wrong: 'Das aktuelle Master-Passwort ist falsch.',
+    err_reencrypt_failed: 'Neuverschlüsselung fehlgeschlagen: ',
+    toast_pw_changed: 'Master-Passwort geändert und gespeichert.',
+    toast_pw_changed_unsaved: 'Passwort im Speicher geändert, aber NICHT gespeichert — die Datei enthält noch das alte Passwort. Bitte erneut speichern.',
+    toast_save_cancelled: 'Speichern abgebrochen — die Änderungen stehen noch nicht in der Datei.',
+    err_save_failed: 'Speichern fehlgeschlagen: ',
+    err_save_verify: 'Die geschriebene Datei ließ sich nicht verifizieren — vorheriger Stand wiederhergestellt.',
+    err_attachment_missing: 'Anhang nicht gefunden.',
+    err_attachment_mismatch: 'Anhang gehört nicht zu diesem Eintrag (Datei manipuliert?).',
+    err_attachment_load: 'Anhang konnte nicht geladen werden: ',
+    toast_attachment_large: 'Hinweis: „{name}" ist groß ({size}) — bläht die Vault-Datei entsprechend auf.',
+    err_qr_not_image: 'Bitte eine Bilddatei (PNG/JPG) mit dem QR-Code verwenden.',
+    err_qr_unsupported: 'Dieser Browser unterstützt keine native QR-Erkennung — Secret bitte manuell eintragen.',
+    err_qr_none: 'Kein QR-Code im Bild erkannt.',
+    err_qr_failed: 'QR-Erkennung fehlgeschlagen: ',
+    err_qr_not_otpauth: 'Das ist kein otpauth-2FA-QR-Code.',
+    err_qr_no_secret: 'QR-Code enthält kein 2FA-Secret.',
+    err_qr_hotp: 'HOTP (zählerbasiert) wird nicht unterstützt — nur zeitbasierte TOTP-Codes.',
+    toast_qr_imported: '2FA-Secret aus QR-Code übernommen.',
+    err_bad_url: 'Diese URL lässt sich nicht öffnen (nur http/https).',
+    totp_params_fmt: '{digits} Stellen · {period} s · {algorithm}',
+    hist_kdf_upgraded: 'Schlüsselableitung aktualisiert',
+    toast_kdf_upgraded: 'Vault nutzte veraltete Verschlüsselungsparameter und wurde auf {n} Iterationen gehoben — bitte speichern.',
+    err_insecure_context: 'Diese Seite läuft ohne HTTPS. Der Browser stellt die Web-Crypto-API nur in einem sicheren Kontext bereit — ohne sie lässt sich kein Vault anlegen oder entsperren. Bitte über https:// aufrufen oder die Datei lokal öffnen.'
+  },
+  en: {
+    subtitle: 'Local password manager · AES-256-GCM · 2FA/TOTP',
+    master_password: 'Master password',
+    unlock: 'Unlock',
+    choose_other_file: '← Choose a different file',
+    forget_link: 'Remove link',
+    load_file: 'Load file',
+    new_file: 'Create new file',
+    new_master_password: 'New master password',
+    confirm_master_password: 'Confirm master password',
+    create_vault: 'Create vault',
+    back: 'Back',
+    about_link: 'ℹ️ About MMO Vault',
+    search_entries: 'Search entries…',
+    export_file: 'Export as encrypted file',
+    change_password_title: 'Change master password',
+    history_title: 'Change history',
+    about_title: 'About MMO Vault',
+    lock_title: 'Lock',
+    save_file_title: 'Save',
+    toast_saved_file: 'Vault saved.',
+    toast_saved_download: 'Vault saved (as download).',
+    more_title: 'More',
+    autolock_title: 'Auto-lock',
+    autolock_h: 'Auto-lock',
+    autolock_hint: 'Automatically locks the vault after this period of inactivity. Saved together with the vault.',
+    autolock_never: 'Never',
+    autolock_set_toast: 'Auto-lock set to {min} min.',
+    autolock_off_toast: 'Auto-lock disabled.',
+    unsaved_h: 'Unsaved changes',
+    unsaved_text: 'There are changes that have not been saved to the file yet. Save before locking?',
+    unsaved_discard: 'Lock without saving',
+    unsaved_save: 'Save & Lock',
+    filter_all: 'All',
+    empty_title: 'No entries yet',
+    empty_text: 'Add your first entry using the button in the bottom right.',
+    new_entry_title: 'New entry',
+    new_entry: 'New entry',
+    edit_entry: 'Edit entry',
+    type_zugang: '🔑 Login',
+    type_freitext: '📝 Note',
+    type_zugang_badge: 'Login',
+    type_freitext_badge: 'Note',
+    entry_title_label: 'Title (e.g. Google, Bank)',
+    entry_url_label: 'URL (optional)',
+    entry_username_label: 'Username / Email',
+    entry_password_label: 'Password',
+    generate_btn: '🎲 Generate',
+    gen_length_label: 'Password length',
+    include_symbols: 'Include special characters',
+    totp_label: '2FA secret (Base32, optional)',
+    qr_dropzone: '📷 Drag a QR code here or click to select',
+    notes_label: 'Notes',
+    content_label: 'Content',
+    tags_label: 'Tags',
+    tag_input_placeholder: 'Type a tag + Enter',
+    attachments_label: 'File attachments',
+    add_attachment_btn: '📎 Attach file',
+    cancel: 'Cancel',
+    save: 'Save',
+    edit: 'Edit',
+    delete: 'Delete',
+    change_password_h: 'Change master password',
+    current_master_password: 'Current master password',
+    confirm_new_master_password: 'Confirm new master password',
+    change_password_hint: 'After changing it, the vault is immediately re-encrypted with the new password and automatically saved to the file.',
+    change_btn: 'Change',
+    history_h: 'Change history',
+    close: 'Close',
+    about_version: 'Version 1.1.0 · local password manager',
+    about_p1: 'Developed by <strong>Michael Müller</strong>. Part of the <strong>MMO</strong> tool series for personal projects.',
+    about_p2: 'Runs entirely locally in the browser as a single HTML file — no external servers, no CDN dependencies, no telemetry, enforced by a Content Security Policy. Encryption via AES-256-GCM (PBKDF2-SHA256, 600,000 iterations), TOTP 2FA per RFC 6238, QR code import via the native BarcodeDetector API.',
+    about_p3: 'No warranty, no guarantee — use at your own risk, like any self-built tool. Regular backups of the vault file are mandatory, not optional.',
+    tag_filter_all: '🏷️ All tags',
+    open_tt: 'Open',
+    copy_tt: 'Copy',
+    toggle_pw_tt: 'Show/hide',
+    options_tt: 'Options',
+    copy_code_tt: 'Copy code',
+    download_tt: 'Download',
+    remove_tt: 'Remove',
+    last_file_prefix: 'Last file: ',
+    last_file_default: 'Load last file',
+    history_empty: 'No changes logged yet.',
+    hist_vault_created: 'Vault created',
+    hist_entry_created: 'Entry created',
+    hist_entry_edited: 'Entry edited',
+    hist_entry_deleted: 'Entry deleted',
+    hist_password_changed: 'Master password changed',
+    hist_autolock_changed: 'Auto-lock changed',
+    files_count: ' file(s)',
+    toast_pw_copied: 'Password copied — clipboard will be cleared in {sec} s.',
+    toast_url_copied: 'URL copied',
+    toast_user_copied: 'Username copied',
+    toast_totp_copied: '2FA code copied — clipboard will be cleared in {sec} s.',
+    toast_copy_failed: 'Copy failed',
+    toast_clipboard_cleared: 'Clipboard cleared.',
+    toast_entry_deleted: 'Entry deleted — remember to save.',
+    toast_entry_saved: 'Entry saved in the vault — now use the "Save" icon above to update the file.',
+    toast_title_required: 'Please enter a title.',
+    confirm_delete_entry: 'really delete?',
+    fsa_hint_supported: 'Your browser supports saving directly to a file. You will be asked for a location the first time you save.',
+    fsa_hint_fallback: 'This browser downloads the vault file instead. Please store it somewhere safe and back it up regularly.',
+    empty_filtered_title: 'No matches',
+    empty_filtered_text: 'No entry matches the current search and filters. Reset the filters or change the search term.',
+    untitled: '(untitled)',
+    err_pw_min: 'The master password should be at least 8 characters long.',
+    err_pw_mismatch: 'The passwords do not match.',
+    err_pw_required: 'Please enter the master password.',
+    err_wrong_pw: 'Wrong master password or corrupted data.',
+    toast_vault_created: 'New vault created — don’t forget to save!',
+    toast_load_file_first: 'Please load a vault file first.',
+    err_no_linked_file: 'No linked file found.',
+    err_file_permission: 'Access to the file was not granted.',
+    err_invalid_vault: 'This file is not a valid vault file.',
+    err_file_unreadable: 'The linked file is no longer readable (common with cloud sync folders, e.g. Nextcloud). Link removed — please pick it again via "Load file".',
+    err_file_open: 'The file could not be opened: ',
+    err_file_read: 'The file could not be read: ',
+    info_fsa_blocked: 'File selection is restricted in this embedded view — use the classic file dialog instead. For "last file"/direct saving, open the downloaded file outside the preview.',
+    status_file_loaded: 'File loaded: ',
+    toast_link_forgotten: 'File link forgotten.',
+    toast_autolocked_dirty: 'Locked automatically — unsaved changes may have been lost.',
+    err_current_pw_required: 'Please enter the current master password.',
+    err_new_pw_min: 'The new master password should be at least 8 characters long.',
+    err_new_pw_mismatch: 'The new passwords do not match.',
+    err_new_pw_same: 'The new password should differ from the current one.',
+    status_checking_pw: 'Checking current password…',
+    status_reencrypting: 'Re-encrypting…',
+    err_current_pw_wrong: 'The current master password is wrong.',
+    err_reencrypt_failed: 'Re-encryption failed: ',
+    toast_pw_changed: 'Master password changed and saved.',
+    toast_pw_changed_unsaved: 'Password changed in memory but NOT saved — the file still holds the old password. Please save again.',
+    toast_save_cancelled: 'Saving cancelled — the changes are not in the file yet.',
+    err_save_failed: 'Saving failed: ',
+    err_save_verify: 'The written file could not be verified — the previous state was restored.',
+    err_attachment_missing: 'Attachment not found.',
+    err_attachment_mismatch: 'Attachment does not belong to this entry (file tampered with?).',
+    err_attachment_load: 'The attachment could not be loaded: ',
+    toast_attachment_large: 'Note: "{name}" is large ({size}) — it will inflate the vault file accordingly.',
+    err_qr_not_image: 'Please use an image file (PNG/JPG) containing the QR code.',
+    err_qr_unsupported: 'This browser has no native QR detection — please enter the secret manually.',
+    err_qr_none: 'No QR code detected in the image.',
+    err_qr_failed: 'QR detection failed: ',
+    err_qr_not_otpauth: 'That is not an otpauth 2FA QR code.',
+    err_qr_no_secret: 'The QR code contains no 2FA secret.',
+    err_qr_hotp: 'HOTP (counter-based) is not supported — time-based TOTP codes only.',
+    toast_qr_imported: '2FA secret imported from QR code.',
+    err_bad_url: 'This URL cannot be opened (http/https only).',
+    totp_params_fmt: '{digits} digits · {period} s · {algorithm}',
+    hist_kdf_upgraded: 'Key derivation upgraded',
+    toast_kdf_upgraded: 'This vault used outdated encryption parameters and was upgraded to {n} iterations — please save.',
+    err_insecure_context: 'This page is served without HTTPS. Browsers expose the Web Crypto API only in a secure context — without it, no vault can be created or unlocked. Please use https:// or open the file locally.'
+  }
+};
+/* t('key', {name:'x'}) ersetzt {name}-Platzhalter im übersetzten Text. */
+function t(key, vars){
+  let text = (I18N[currentLang] && I18N[currentLang][key]) || I18N.de[key] || key;
+  if(vars){
+    Object.keys(vars).forEach(k => { text = text.split('{' + k + '}').join(vars[k]); });
+  }
+  return text;
+}
+function applyStaticTranslations(){
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    el.innerHTML = t(key);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.setAttribute('placeholder', t(el.getAttribute('data-i18n-placeholder')));
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    // Icon-Buttons tragen nur ein Symbol — aria-label mitsetzen, sonst sind sie
+    // für Screenreader namenlos.
+    el.setAttribute('title', t(el.getAttribute('data-i18n-title')));
+    el.setAttribute('aria-label', t(el.getAttribute('data-i18n-title')));
+  });
+  // Felder ohne sichtbares <label> (Suche, Tag-Eingabe, Schieberegler, Auswahl)
+  document.querySelectorAll('[data-i18n-aria]').forEach(el => {
+    el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria')));
+  });
+  document.getElementById('langToggleLock').textContent = currentLang === 'de' ? 'EN' : 'DE';
+  document.getElementById('langToggleTopbar').textContent = currentLang === 'de' ? 'EN' : 'DE';
+}
+function setLang(lang){
+  currentLang = lang;
+  applyStaticTranslations();
+  const hint = document.getElementById('fsaHint');
+  if(hint) hint.textContent = ('showSaveFilePicker' in window) ? t('fsa_hint_supported') : t('fsa_hint_fallback');
+  // Dynamisch erzeugte Inhalte neu rendern, damit sie die neue Sprache übernehmen
+  refreshRememberedFileButton();
+  // Die Typ-Chips entstehen aus RECORD_TYPES und werden von
+  // applyStaticTranslations nicht erfasst — neu aufbauen und Auswahl wiederherstellen.
+  renderTypeFilterChips();
+  setActiveTypeFilter(activeTypeFilter);
+  if(historyOverlay.classList.contains('show')) renderHistoryList();
+  updateTotpParamsHint();
+  updateMoreLangLabel();
+  // Steht die Web-Crypto-API nicht bereit, muss der Hinweis in der neuen
+  // Sprache erscheinen — er lebt in lockStatus, nicht in einem data-i18n-Element.
+  if(!window.isSecureContext) enforceSecureContext();
+}
+document.getElementById('langToggleLock').onclick = () => setLang(currentLang === 'de' ? 'en' : 'de');
+document.getElementById('langToggleTopbar').onclick = () => setLang(currentLang === 'de' ? 'en' : 'de');
+
+/* Record-Typen: zentral definiert, damit Filter, Dialog und Badges
+   automatisch mitziehen, wenn hier später weitere Typen ergänzt werden. */
+const RECORD_TYPES = [
+  { id: 'zugang',   labelKey: 'type_zugang',   badgeKey: 'type_zugang_badge' },
+  { id: 'freitext', labelKey: 'type_freitext', badgeKey: 'type_freitext_badge' }
+];
+function typeConfig(id){
+  return RECORD_TYPES.find(t => t.id === id) || RECORD_TYPES[0];
+}
+
+function renderTypeFilterChips(){
+  const row = document.getElementById('typeFilterRow');
+  // Vorherige Typ-Chips entfernen (alles außer "Alle"), damit mehrfaches
+  // Rendern (z. B. bei einem Reload) keine doppelten Buttons erzeugt.
+  row.querySelectorAll('.chip:not([data-type="all"])').forEach(el => el.remove());
+  RECORD_TYPES.forEach(rt => {
+    const chip = document.createElement('button');
+    chip.className = 'chip';
+    chip.dataset.type = rt.id;
+    chip.textContent = t(rt.labelKey);
+    chip.onclick = () => setActiveTypeFilter(rt.id);
+    row.appendChild(chip);
+  });
+  row.querySelector('[data-type="all"]').onclick = () => setActiveTypeFilter('all');
+}
+let activeTypeFilter = 'all';
+function setActiveTypeFilter(id){
+  activeTypeFilter = id;
+  document.querySelectorAll('#typeFilterRow .chip').forEach(c => c.classList.toggle('active', c.dataset.type === id));
+  renderEntries();
+}
+renderTypeFilterChips();
+
+let state = {
+  key: null,          // CryptoKey (nicht persistiert)
+  salt: null,          // Uint8Array
+  iterations: null,    // PBKDF2-Iterationen, mit denen state.key abgeleitet wurde
+  entries: [],         // [{id,title,username,password,totp,notes}]
+  history: [],         // [{ts, action, detail}] — Änderungsverlauf, wird mitverschlüsselt
+  fileBlockLines: new Map(), // id -> {iv,data} — noch verschlüsselte Anhangs-Blöcke (lazy)
+  fsaBlocked: false,   // true, wenn File System Access API im aktuellen Frame gesperrt ist (z. B. Cross-Origin-iframe)
+  autoLockMinutes: DEFAULT_AUTO_LOCK_MINUTES, // 0 = deaktiviert; wird mit im Vault gespeichert
+  fileHandle: null,    // File System Access Handle, falls verfügbar
+  pendingVault: null,  // geparste, noch verschlüsselte Datei zwischen Auswahl und Entsperren
+  pendingSource: null
+};
+// state.dirty als aktive Eigenschaft: jede Änderung aktualisiert automatisch
+// die visuelle "ungespeichert"-Markierung am Speichern-Symbol.
+let _dirtyFlag = false;
+Object.defineProperty(state, 'dirty', {
+  get(){ return _dirtyFlag; },
+  set(v){ _dirtyFlag = v; updateDirtyIndicator(); }
+});
+let autoLockTimer = null;
+let totpTickHandle = null;
+
+/* ---------- Hilfsfunktionen: Krypto ---------- */
+
+function randomBytes(n){
+  const b = new Uint8Array(n);
+  crypto.getRandomValues(b);
+  return b;
+}
+function bytesToB64(bytes){
+  // Blockweise, damit mehrere MB große Anhänge nicht zeichenweise
+  // zu einem Riesen-String konkateniert werden müssen.
+  const CHUNK = 0x8000;
+  let bin = '';
+  for(let i = 0; i < bytes.length; i += CHUNK){
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+}
+function b64ToBytes(b64){
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+/* Zufälliger Index ohne Modulo-Bias (Rejection Sampling): Werte im
+   unvollständigen letzten 256er-Block werden verworfen, damit jedes Zeichen
+   des Alphabets exakt gleich wahrscheinlich ist. */
+function randomIndex(max){
+  const limit = 256 - (256 % max);
+  const buf = new Uint8Array(1);
+  for(;;){
+    crypto.getRandomValues(buf);
+    if(buf[0] < limit) return buf[0] % max;
+  }
+}
+async function deriveKey(password, salt, iterations){
+  const enc = new TextEncoder();
+  const baseKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name:'PBKDF2', salt, iterations, hash:'SHA-256' },
+    baseKey,
+    { name:'AES-GCM', length:256 },
+    false,
+    ['encrypt','decrypt']
+  );
+}
+async function encryptJSON(key, obj){
+  const iv = randomBytes(12);
+  const enc = new TextEncoder();
+  const data = enc.encode(JSON.stringify(obj));
+  const cipherBuf = await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, data);
+  return { iv: bytesToB64(iv), data: bytesToB64(new Uint8Array(cipherBuf)) };
+}
+async function decryptJSON(key, ivB64, dataB64){
+  const iv = b64ToBytes(ivB64);
+  const cipherBytes = b64ToBytes(dataB64);
+  const plainBuf = await crypto.subtle.decrypt({name:'AES-GCM', iv}, key, cipherBytes);
+  const dec = new TextDecoder();
+  return JSON.parse(dec.decode(plainBuf));
+}
+
+/* ---------- Datei-Format (blockweise, Zeile für Zeile lesbar) ----------
+   Neues Format (v2): NDJSON — eine Zeile pro Block, unabhängig parsbar:
+     Zeile 1: {"type":"header", format, salt, iterations}
+     Zeile 2: {"type":"text", iv, data}   ← verschlüsselt {entries (ohne Anhangs-Rohdaten), history}
+     Zeile 3+: {"type":"file", id, iv, data}  ← je ein eigener Block pro Dateianhang
+   Vorteil: der Text-Block (klein, schnell) wird beim Entsperren sofort entschlüsselt.
+   Anhänge bleiben als eigene verschlüsselte Blöcke liegen und werden erst beim
+   tatsächlichen Download entschlüsselt ("nachladen").
+   Alte Dateien (v1, alles in einem einzigen JSON-Objekt) werden weiterhin gelesen
+   und beim nächsten Speichern automatisch ins neue Blockformat überführt. */
+
+/* Header-Felder stammen aus einer nicht authentifizierten Datei und werden
+   deshalb vor jeder Verwendung plausibilisiert — insbesondere die Iterationszahl,
+   die sonst als Denial-of-Service den Tab blockieren könnte. */
+function validateVaultDescriptor(desc){
+  if(typeof desc.salt !== 'string' || !desc.salt){
+    throw new Error('Ungültiges Salt im Datei-Header.');
+  }
+  let saltBytes;
+  try{ saltBytes = b64ToBytes(desc.salt); }
+  catch(err){ throw new Error('Salt im Datei-Header ist kein gültiges Base64.'); }
+  if(saltBytes.length < 8 || saltBytes.length > 64){
+    throw new Error('Salt im Datei-Header hat eine unplausible Länge.');
+  }
+  if(!Number.isInteger(desc.iterations) ||
+     desc.iterations < MIN_FILE_ITERATIONS ||
+     desc.iterations > MAX_FILE_ITERATIONS){
+    throw new Error('Unplausible Iterationszahl im Datei-Header.');
+  }
+  if(typeof desc.textIv !== 'string' || typeof desc.textData !== 'string'){
+    throw new Error('Verschlüsselter Textblock fehlt oder ist beschädigt.');
+  }
+  return desc;
+}
+
+function parseVaultText(text){
+  const trimmed = text.trim();
+  const lines = trimmed.split('\n').map(l => l.trim()).filter(Boolean);
+
+  if(lines.length > 1){
+    let header = null, textBlock = null;
+    const fileBlocks = new Map();
+    try{
+      for(const line of lines){
+        const obj = JSON.parse(line);
+        if(obj.type === 'header') header = obj;
+        else if(obj.type === 'text') textBlock = obj;
+        else if(obj.type === 'file' && typeof obj.id === 'string'){
+          fileBlocks.set(obj.id, { iv: obj.iv, data: obj.data });
+        }
+      }
+    }catch(err){ header = null; textBlock = null; }
+    if(header && textBlock && header.salt && header.iterations && textBlock.iv && textBlock.data){
+      return validateVaultDescriptor({
+        salt: header.salt,
+        iterations: header.iterations,
+        textIv: textBlock.iv,
+        textData: textBlock.data,
+        fileBlocks
+      });
+    }
+  }
+
+  // Legacy-Fallback: altes Format v1, ein einziges JSON-Objekt mit allem inklusive
+  const obj = JSON.parse(trimmed);
+  if(!obj.salt || !obj.iv || !obj.data || !obj.iterations){
+    throw new Error('Unbekanntes oder ungültiges Dateiformat.');
+  }
+  return validateVaultDescriptor({
+    salt: obj.salt,
+    iterations: obj.iterations,
+    textIv: obj.iv,
+    textData: obj.data,
+    fileBlocks: new Map()
+  });
+}
+
+/* ---------- TOTP (RFC 6238 / RFC 4226) ---------- */
+
+function base32Decode(str){
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  str = str.replace(/=+$/,'').toUpperCase().replace(/[^A-Z2-7]/g,'');
+  let bits = '';
+  for(const c of str){
+    const val = alphabet.indexOf(c);
+    if(val === -1) continue;
+    bits += val.toString(2).padStart(5,'0');
+  }
+  const bytes = [];
+  for(let i=0;i+8<=bits.length;i+=8){
+    bytes.push(parseInt(bits.substring(i,i+8),2));
+  }
+  return new Uint8Array(bytes);
+}
+
+const TOTP_ALGORITHMS = { 'SHA-1': 'SHA-1', 'SHA1': 'SHA-1', 'SHA-256': 'SHA-256', 'SHA256': 'SHA-256', 'SHA-512': 'SHA-512', 'SHA512': 'SHA-512' };
+
+/* Normalisiert die pro Eintrag gespeicherten TOTP-Parameter. Fehlen sie (Einträge aus
+   älteren Versionen), gelten die RFC-6238-Standardwerte 6 Stellen / 30 s / SHA-1. */
+function totpParamsOf(entry){
+  const digits = Number.isInteger(entry.totpDigits) && entry.totpDigits >= 6 && entry.totpDigits <= 10
+    ? entry.totpDigits : TOTP_DEFAULTS.digits;
+  const period = Number.isInteger(entry.totpPeriod) && entry.totpPeriod >= 5 && entry.totpPeriod <= 300
+    ? entry.totpPeriod : TOTP_DEFAULTS.period;
+  const algorithm = TOTP_ALGORITHMS[String(entry.totpAlgorithm || '').toUpperCase()] || TOTP_DEFAULTS.algorithm;
+  return { digits, period, algorithm };
+}
+function isDefaultTotpParams(p){
+  return p.digits === TOTP_DEFAULTS.digits && p.period === TOTP_DEFAULTS.period && p.algorithm === TOTP_DEFAULTS.algorithm;
+}
+
+async function computeTotp(secretBase32, counter, digits, algorithm){
+  if(!secretBase32) return null;
+  const keyBytes = base32Decode(secretBase32);
+  if(keyBytes.length === 0) return null;
+  const counterBytes = new ArrayBuffer(8);
+  const view = new DataView(counterBytes);
+  // 64-bit big-endian counter (JS-sicher bis 2^53)
+  view.setUint32(4, counter >>> 0);
+  view.setUint32(0, Math.floor(counter / 0x100000000));
+
+  const cryptoKey = await crypto.subtle.importKey('raw', keyBytes, {name:'HMAC', hash:algorithm}, false, ['sign']);
+  const hmacBuf = await crypto.subtle.sign('HMAC', cryptoKey, counterBytes);
+  const hmac = new Uint8Array(hmacBuf);
+  const offset = hmac[hmac.length-1] & 0x0f;
+  const binCode = ((hmac[offset] & 0x7f) << 24) |
+                  ((hmac[offset+1] & 0xff) << 16) |
+                  ((hmac[offset+2] & 0xff) << 8) |
+                  (hmac[offset+3] & 0xff);
+  return (binCode % (10 ** digits)).toString().padStart(digits,'0');
+}
+
+/* Der Code ändert sich nur einmal pro Periode, der Fortschrittsring dagegen jede
+   Sekunde. Deshalb wird das HMAC pro Eintrag und Zähler genau einmal berechnet. */
+const totpCodeCache = new Map(); // entryId -> {counter, secret, code}
+
+async function totpForEntry(entry, timestamp=Date.now()){
+  if(!entry.totp) return null;
+  const { digits, period, algorithm } = totpParamsOf(entry);
+  const nowSec = Math.floor(timestamp / 1000);
+  const counter = Math.floor(nowSec / period);
+  const cached = totpCodeCache.get(entry.id);
+  let code;
+  if(cached && cached.counter === counter && cached.secret === entry.totp && cached.digits === digits && cached.algorithm === algorithm){
+    code = cached.code;
+  } else {
+    code = await computeTotp(entry.totp, counter, digits, algorithm);
+    if(code === null) return null;
+    totpCodeCache.set(entry.id, { counter, secret: entry.totp, digits, algorithm, code });
+  }
+  return { code, secondsRemaining: period - (nowSec % period), period };
+}
+
+/* ---------- UI: Toast ---------- */
+function showToast(msg){
+  const toastEl = document.getElementById('toast');
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastEl._timer);
+  toastEl._timer = setTimeout(()=> toastEl.classList.remove('show'), 2400);
+}
+
+/* Geheimnisse (Passwörter, 2FA-Codes) werden nach CLIPBOARD_CLEAR_SECONDS wieder
+   aus der Zwischenablage entfernt. Nicht-geheime Werte (URL, Benutzername) bleiben
+   liegen, damit die App nicht unerwartet fremde Kopier-Inhalte überschreibt. */
+let clipboardClearTimer = null;
+
+function cancelClipboardClear(){
+  clearTimeout(clipboardClearTimer);
+  clipboardClearTimer = null;
+}
+
+function scheduleClipboardClear(){
+  cancelClipboardClear();
+  clipboardClearTimer = setTimeout(() => {
+    clipboardClearTimer = null;
+    // Schlägt fehl, wenn das Dokument gerade nicht fokussiert ist — dann bleibt
+    // der Wert liegen; das ist eine Browser-Einschränkung, kein stiller Fehler.
+    navigator.clipboard.writeText('')
+      .then(() => showToast(t('toast_clipboard_cleared')))
+      .catch(() => {});
+  }, CLIPBOARD_CLEAR_SECONDS * 1000);
+}
+
+function copyToClipboard(text, msgKey, isSecret){
+  navigator.clipboard.writeText(text).then(()=>{
+    showToast(t(msgKey, { sec: CLIPBOARD_CLEAR_SECONDS }));
+    if(isSecret) scheduleClipboardClear();
+  }).catch(()=> showToast(t('toast_copy_failed')));
+}
+
+/* ---------- Änderungsverlauf ---------- */
+/* Wird zusammen mit den Einträgen verschlüsselt in der Datei gespeichert
+   (payload.history) — enthält bewusst nur Zeitstempel/Aktion/Titel,
+   nie Passwörter, Benutzernamen, URLs oder 2FA-Secrets. */
+function addHistory(action, detail){
+  state.history = state.history || [];
+  state.history.push({ ts: Date.now(), action, detail: detail || '' });
+  if(state.history.length > 300) state.history = state.history.slice(-300);
+}
+
+/* ---------- Sperr-Bildschirm Logik ---------- */
+
+const lockStatus = document.getElementById('lockStatus');
+function setLockStatus(msg, type){
+  lockStatus.textContent = msg || '';
+  lockStatus.className = 'status-msg' + (msg ? ' ' + type : '');
+}
+
+function showCreateView(){
+  document.getElementById('unlockView').style.display = 'none';
+  document.getElementById('createView').style.display = 'block';
+  setLockStatus('', '');
+}
+document.getElementById('btnBackToUnlock').onclick = () => {
+  document.getElementById('createView').style.display = 'none';
+  document.getElementById('unlockView').style.display = 'block';
+  document.getElementById('fileStep').style.display = 'block';
+  document.getElementById('passwordStep').style.display = 'none';
+};
+
+/* Grobe Stärke-Heuristik für die Fortschrittsleiste — bewusst simpel und nur
+   als visuelles Feedback gedacht, keine Freigabe-/Sperrlogik. */
+function passwordScore(v){
+  let score = 0;
+  if(v.length >= 8) score += 25;
+  if(v.length >= 14) score += 20;
+  if(/[a-z]/.test(v) && /[A-Z]/.test(v)) score += 20;
+  if(/[0-9]/.test(v)) score += 15;
+  if(/[^A-Za-z0-9]/.test(v)) score += 20;
+  return score;
+}
+function bindPasswordMeter(inputId, fillId){
+  document.getElementById(inputId).addEventListener('input', (e)=>{
+    const score = passwordScore(e.target.value);
+    const fill = document.getElementById(fillId);
+    fill.style.width = Math.min(score,100) + '%';
+    fill.style.background = score < 40 ? 'var(--error)' : score < 70 ? '#e3c56a' : 'var(--secondary)';
+  });
+}
+bindPasswordMeter('newPassword', 'pwEvalFill');
+
+document.getElementById('btnCreateVault').onclick = async () => {
+  const pw = document.getElementById('newPassword').value;
+  const pw2 = document.getElementById('newPasswordConfirm').value;
+  if(pw.length < 8){ setLockStatus(t('err_pw_min'), 'error'); return; }
+  if(pw !== pw2){ setLockStatus(t('err_pw_mismatch'), 'error'); return; }
+
+  const salt = randomBytes(16);
+  const key = await deriveKey(pw, salt, PBKDF2_ITERATIONS);
+  state.key = key;
+  state.salt = salt;
+  state.iterations = PBKDF2_ITERATIONS;
+  state.entries = [];
+  state.history = [];
+  state.fileBlockLines = new Map();
+  state.autoLockMinutes = DEFAULT_AUTO_LOCK_MINUTES;
+  addHistory('hist_vault_created', '');
+  state.fileHandle = null;
+  state.dirty = true; // frisch erzeugter Vault steht noch in keiner Datei
+  document.getElementById('newPassword').value = '';
+  document.getElementById('newPasswordConfirm').value = '';
+  document.getElementById('pwEvalFill').style.width = '0%';
+  enterApp();
+  showToast(t('toast_vault_created'));
+};
+
+document.getElementById('btnUnlock').onclick = async () => {
+  showToast(t('toast_load_file_first'));
+};
+
+/* ---------- Gemerkte Datei-Verknüpfung (File System Access API + IndexedDB) ----------
+   Speichert das FileSystemFileHandle-Objekt selbst (nicht den Dateiinhalt) in IndexedDB,
+   damit beim nächsten Besuch dieselbe Datei ohne erneute Auswahl genutzt werden kann.
+   Der Browser fragt aus Sicherheitsgründen bei jedem Neuladen einmal kurz die Berechtigung
+   erneut ab (requestPermission) — das ist normales FSA-Verhalten, kein Bug. */
+
+const HANDLE_DB_NAME = 'mmo_vault_handles';
+const HANDLE_STORE = 'handles';
+const HANDLE_KEY = 'vault_file_handle';
+
+function openHandleDB(){
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(HANDLE_DB_NAME, 1);
+    req.onupgradeneeded = () => { req.result.createObjectStore(HANDLE_STORE); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+/* Öffnet die DB, führt die Operation aus und schließt die Verbindung wieder —
+   sonst sammeln sich über die Laufzeit offene IndexedDB-Verbindungen an. */
+async function withHandleDB(fn){
+  const db = await openHandleDB();
+  try{ return await fn(db); }
+  finally{ db.close(); }
+}
+function runTx(db, mode, work){
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(HANDLE_STORE, mode);
+    const result = work(tx.objectStore(HANDLE_STORE));
+    tx.oncomplete = () => resolve(result && 'result' in result ? result.result : undefined);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+async function storeFileHandle(handle){
+  try{
+    await withHandleDB(db => runTx(db, 'readwrite', store => store.put(handle, HANDLE_KEY)));
+  }catch(err){ /* Handle-Speicherung ist ein Komfortfeature, still fehlschlagen lassen */ }
+}
+async function getStoredFileHandle(){
+  try{
+    return await withHandleDB(db => runTx(db, 'readonly', store => store.get(HANDLE_KEY))) || null;
+  }catch(err){ return null; }
+}
+async function clearStoredFileHandle(){
+  try{
+    // Auf den Abschluss der Transaktion warten: sonst kann ein direkt folgendes
+    // refreshRememberedFileButton() den gerade gelöschten Handle noch lesen.
+    await withHandleDB(db => runTx(db, 'readwrite', store => store.delete(HANDLE_KEY)));
+  }catch(err){ /* nichts zu tun */ }
+}
+
+function showPasswordStep(){
+  document.getElementById('fileStep').style.display = 'none';
+  document.getElementById('passwordStep').style.display = 'block';
+  document.getElementById('btnUnlock').onclick = tryUnlockPendingVault;
+  document.getElementById('unlockPassword').focus();
+}
+function showFileStep(){
+  document.getElementById('passwordStep').style.display = 'none';
+  document.getElementById('fileStep').style.display = 'block';
+  document.getElementById('unlockPassword').value = '';
+  state.pendingVault = null;
+  setLockStatus('', '');
+}
+document.getElementById('btnBackToFileStep').onclick = showFileStep;
+
+async function useRememberedFile(){
+  const handle = await getStoredFileHandle();
+  if(!handle){ setLockStatus(t('err_no_linked_file'), 'error'); refreshRememberedFileButton(); return; }
+  try{
+    let perm = await handle.queryPermission({ mode: 'readwrite' });
+    if(perm !== 'granted') perm = await handle.requestPermission({ mode: 'readwrite' });
+    if(perm !== 'granted'){ setLockStatus(t('err_file_permission'), 'error'); return; }
+    const file = await handle.getFile();
+    const text = await file.text();
+    let vault;
+    try{ vault = parseVaultText(text); }catch(err){ setLockStatus(t('err_invalid_vault'), 'error'); return; }
+    state.pendingVault = vault;
+    state.pendingSource = 'file';
+    state.fileHandle = handle;
+    setLockStatus(t('status_file_loaded') + handle.name, 'info');
+    showPasswordStep();
+  }catch(err){
+    // Typisch bei Cloud-Sync-Ordnern (Nextcloud/OneDrive/Dropbox Desktop-Client):
+    // die Datei wurde durch den Sync-Client intern ausgetauscht, der gespeicherte
+    // Handle zeigt dann ins Leere. Verknüpfung automatisch aufräumen, damit der
+    // Button nicht dauerhaft mit demselben Fehler hängen bleibt.
+    if(err.name === 'NotReadableError' || /could not be read/i.test(err.message || '')){
+      state.fileHandle = null;
+      await clearStoredFileHandle();
+      await refreshRememberedFileButton();
+      setLockStatus(t('err_file_unreadable'), 'error');
+    } else {
+      setLockStatus(t('err_file_open') + err.message, 'error');
+    }
+  }
+}
+
+async function forgetRememberedFile(){
+  state.fileHandle = null;
+  await clearStoredFileHandle();
+  await refreshRememberedFileButton();
+  showToast(t('toast_link_forgotten'));
+}
+
+/* Cross-Origin-iframes sperren die File System Access API komplett — das äußert sich
+   je nach Browser als SecurityError oder als generischer "cross origin"-Fehler. */
+function isCrossOriginBlock(err){
+  return err && (err.name === 'SecurityError' || /cross origin/i.test(err.message || ''));
+}
+
+async function loadFileViaPicker(){
+  if('showOpenFilePicker' in window && !state.fsaBlocked){
+    try{
+      const [handle] = await window.showOpenFilePicker({
+        types: [{ description: 'Vault-Datei', accept: {'application/json': ['.json']} }]
+      });
+      const file = await handle.getFile();
+      const text = await file.text();
+      let vault;
+      try{ vault = parseVaultText(text); }catch(err){ setLockStatus(t('err_invalid_vault'), 'error'); return; }
+      state.pendingVault = vault;
+      state.pendingSource = 'file';
+      state.fileHandle = handle;
+      await storeFileHandle(handle);
+      await refreshRememberedFileButton();
+      setLockStatus(t('status_file_loaded') + handle.name, 'info');
+      showPasswordStep();
+    }catch(err){
+      if(err.name === 'AbortError') return;
+      if(isCrossOriginBlock(err)){
+        // Läuft in einem eingebetteten Cross-Origin-iframe (z. B. Vorschau-Fenster) —
+        // die File System Access API ist dort grundsätzlich gesperrt, kein Bug.
+        // Ab jetzt für diese Sitzung direkt den klassischen Datei-Dialog nutzen.
+        state.fsaBlocked = true;
+        state.fileHandle = null;
+        await refreshRememberedFileButton();
+        setLockStatus(t('info_fsa_blocked'), 'info');
+        document.getElementById('fileInput').click();
+        return;
+      }
+      setLockStatus(t('err_file_open') + err.message, 'error');
+    }
+  } else {
+    document.getElementById('fileInput').click();
+  }
+}
+
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+  try{
+    const text = await file.text();
+    let vault;
+    try{ vault = parseVaultText(text); }catch(err){ setLockStatus(t('err_invalid_vault'), 'error'); return; }
+    state.pendingVault = vault;
+    state.pendingSource = 'file';
+    // Über den klassischen Dialog gibt es kein schreibbares Handle. Ein evtl. noch
+    // gesetztes Handle einer früher geöffneten Datei muss weg, sonst würde ein
+    // späteres Speichern in die falsche Datei schreiben.
+    state.fileHandle = null;
+    setLockStatus(t('status_file_loaded') + file.name, 'info');
+    showPasswordStep();
+  }catch(err){
+    setLockStatus(t('err_file_read') + err.message, 'error');
+  }
+});
+
+/* ---------- Buttons für Datei-Verwaltung auf dem Sperrbildschirm ---------- */
+
+async function refreshRememberedFileButton(){
+  const row = document.getElementById('rememberedFileRow');
+  const hasFSA = 'showOpenFilePicker' in window && !state.fsaBlocked;
+  const handle = hasFSA ? await getStoredFileHandle() : null;
+  if(handle){
+    document.getElementById('rememberedFileLabel').textContent = t('last_file_prefix') + handle.name;
+    row.style.display = 'flex';
+  } else {
+    row.style.display = 'none';
+  }
+}
+
+document.getElementById('btnUseRememberedFile').onclick = useRememberedFile;
+document.getElementById('btnForgetRememberedFile').onclick = forgetRememberedFile;
+document.getElementById('btnLoadFile').onclick = loadFileViaPicker;
+document.getElementById('btnNewVault').onclick = showCreateView;
+
+/* Dateien aus älteren Versionen können mit einer zu niedrigen Iterationszahl
+   verschlüsselt sein. Direkt nach dem Entsperren liegt das Passwort vor — genau
+   dann lässt sich der Schlüssel einmalig auf den aktuellen Standard heben.
+   Anhänge müssen davor mit dem ALTEN Schlüssel in den Speicher, sonst wären sie
+   nach dem Wechsel nicht mehr lesbar. */
+async function upgradeKdfIfOutdated(password){
+  if(state.iterations >= PBKDF2_ITERATIONS) return;
+  try{
+    await loadAllAttachmentsIntoMemory();
+    state.fileBlockLines = new Map();
+    const newSalt = randomBytes(16);
+    const newKey = await deriveKey(password, newSalt, PBKDF2_ITERATIONS);
+    state.key = newKey;
+    state.salt = newSalt;
+    state.iterations = PBKDF2_ITERATIONS;
+    addHistory('hist_kdf_upgraded', String(PBKDF2_ITERATIONS));
+    state.dirty = true;
+    showToast(t('toast_kdf_upgraded', { n: PBKDF2_ITERATIONS.toLocaleString(currentLang === 'de' ? 'de-DE' : 'en-US') }));
+  }catch(err){
+    // Upgrade ist optional: schlägt es fehl, bleibt der alte Schlüssel gültig
+    // und der Vault ist unverändert benutzbar.
+  }
+}
+
+async function tryUnlockPendingVault(){
+  const pw = document.getElementById('unlockPassword').value;
+  const vault = state.pendingVault;
+  if(!pw){ setLockStatus(t('err_pw_required'), 'error'); return; }
+  if(!vault){ setLockStatus(t('toast_load_file_first'), 'error'); return; }
+  try{
+    const salt = b64ToBytes(vault.salt);
+    const key = await deriveKey(pw, salt, vault.iterations);
+    const payload = await decryptJSON(key, vault.textIv, vault.textData);
+    state.key = key;
+    state.salt = salt;
+    state.iterations = vault.iterations;
+    state.entries = Array.isArray(payload.entries) ? payload.entries : [];
+    state.history = Array.isArray(payload.history) ? payload.history : [];
+    state.fileBlockLines = vault.fileBlocks || new Map();
+    state.autoLockMinutes = typeof payload.autoLockMinutes === 'number' ? payload.autoLockMinutes : DEFAULT_AUTO_LOCK_MINUTES;
+    state.dirty = false;
+    state.pendingVault = null;
+    await upgradeKdfIfOutdated(pw);
+    enterApp();
+  }catch(err){
+    setLockStatus(t('err_wrong_pw'), 'error');
+  }
+}
+
+document.getElementById('unlockPassword').addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter') document.getElementById('btnUnlock').click();
+});
+
+/* Prüft, ob die Web-Crypto-API überhaupt bereitsteht. crypto.subtle gibt es nur
+   in einem "secure context" — beim Ausliefern über http:// auf einer anderen
+   Adresse als localhost fehlt sie komplett. Ohne diese Prüfung würde erst das
+   Entsperren mit einem unverständlichen TypeError abbrechen. Betrifft nur den
+   Server-Betrieb; als lokale Datei (file://) gilt die Seite als sicher. */
+function enforceSecureContext(){
+  if(window.isSecureContext && window.crypto && window.crypto.subtle) return true;
+  setLockStatus(t('err_insecure_context'), 'error');
+  ['btnLoadFile','btnNewVault','btnUnlock','btnUseRememberedFile','btnForgetRememberedFile']
+    .forEach(id => { const el = document.getElementById(id); if(el) el.disabled = true; });
+  document.getElementById('fsaHint').style.display = 'none';
+  return false;
+}
+
+/* Hinweis zur File System Access API */
+(function(){
+  const hint = document.getElementById('fsaHint');
+  if('showSaveFilePicker' in window){
+    hint.textContent = t('fsa_hint_supported');
+  } else {
+    hint.textContent = t('fsa_hint_fallback');
+  }
+  applyStaticTranslations();
+  refreshRememberedFileButton();
+  enforceSecureContext();
+})();
+
+/* ---------- App-Screen ---------- */
+
+function enterApp(){
+  document.getElementById('lockScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display = 'flex';
+  document.getElementById('unlockPassword').value = '';
+  document.getElementById('currentFileLabel').textContent = state.fileHandle ? state.fileHandle.name : '';
+  // Such- und Filterzustand gehören zur vorherigen Sitzung — sonst wirkt ein
+  // frisch entsperrter Vault durch einen alten Suchbegriff scheinbar leer.
+  document.getElementById('searchInput').value = '';
+  searchTerm = '';
+  activeTagFilter = 'all';
+  setActiveTypeFilter('all');
+  resetAutoLockTimer();
+  startTotpTicker();
+  startAutoLockDisplayTicker();
+}
+
+/* Schließt alle modalen Overlays und leert die Eingabefelder, die Geheimnisse
+   enthalten können. Wird beim Sperren aufgerufen: sonst bliebe z. B. ein offener
+   Eintrags-Dialog (position:fixed) samt Klartext-Passwort über dem Sperrbildschirm
+   stehen, wenn die Auto-Sperre zuschlägt. */
+function closeAllDialogs(){
+  document.querySelectorAll('.overlay.show').forEach(el => el.classList.remove('show'));
+  entryMenu.classList.remove('show');
+  closeMoreMenu();
+  menuEntryId = null;
+  ['entryTitle','entryUrl','entryUsername','entryPassword','entryTotp','entryNotes',
+   'tagInputField','cpCurrentPassword','cpNewPassword','cpNewPasswordConfirm']
+    .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  document.getElementById('entryId').value = '';
+  document.getElementById('pwEvalFill').style.width = '0%';
+  document.getElementById('cpEvalFill').style.width = '0%';
+  currentTags = [];
+  currentAttachments = [];
+  currentTotpParams = { ...TOTP_DEFAULTS };
+  renderTagChips();
+  renderAttachmentList();
+  updateTotpParamsHint();
+}
+
+function lockApp(){
+  closeAllDialogs();
+  // Alles verwerfen, was Klartext enthält oder enthalten könnte.
+  state.key = null;
+  state.salt = null;
+  state.iterations = null;
+  state.entries = [];
+  state.history = [];
+  state.fileBlockLines = new Map();
+  state.pendingVault = null;
+  state.pendingSource = null;
+  state.fileHandle = null;
+  state.dirty = false;
+  totpCodeCache.clear();
+  cancelClipboardClear();
+  // Aufgedeckte Passwörter und entschlüsselte Werte aus dem DOM entfernen.
+  document.getElementById('entryGrid').innerHTML = '';
+  document.getElementById('historyList').innerHTML = '';
+  document.getElementById('tagFilterRow').innerHTML = '';
+  document.getElementById('searchInput').value = '';
+  searchTerm = '';
+  activeTagFilter = 'all';
+
+  document.getElementById('currentFileLabel').textContent = '';
+  document.getElementById('appScreen').style.display = 'none';
+  document.getElementById('lockScreen').style.display = 'flex';
+  document.getElementById('unlockView').style.display = 'block';
+  document.getElementById('createView').style.display = 'none';
+  document.getElementById('fileStep').style.display = 'block';
+  document.getElementById('passwordStep').style.display = 'none';
+  document.getElementById('unlockPassword').value = '';
+  document.getElementById('btnUnlock').onclick = () => showToast(t('toast_load_file_first'));
+  setLockStatus('', '');
+  clearTimeout(autoLockTimer);
+  clearInterval(totpTickHandle);
+  clearInterval(autoLockDisplayHandle);
+  autoLockDeadline = null;
+  refreshRememberedFileButton();
+}
+
+['keydown','click','touchstart'].forEach(evt=>{
+  document.addEventListener(evt, resetAutoLockTimer, {passive:true});
+});
+let autoLockDeadline = null;
+let autoLockDisplayHandle = null;
+
+function resetAutoLockTimer(){
+  if(document.getElementById('appScreen').style.display !== 'flex') return;
+  clearTimeout(autoLockTimer);
+  const minutes = typeof state.autoLockMinutes === 'number' ? state.autoLockMinutes : 5;
+  if(minutes <= 0){
+    autoLockDeadline = null;
+    updateAutoLockDisplay();
+    return; // 0 = Auto-Sperre deaktiviert
+  }
+  autoLockDeadline = Date.now() + minutes * 60 * 1000;
+  updateAutoLockDisplay();
+  autoLockTimer = setTimeout(()=>{
+    const wasDirty = state.dirty;
+    lockApp();
+    if(wasDirty) showToast(t('toast_autolocked_dirty'));
+  }, minutes * 60 * 1000);
+}
+
+function startAutoLockDisplayTicker(){
+  clearInterval(autoLockDisplayHandle);
+  updateAutoLockDisplay();
+  autoLockDisplayHandle = setInterval(updateAutoLockDisplay, 1000);
+}
+
+function updateAutoLockDisplay(){
+  const el = document.getElementById('autoLockCountdown');
+  const btn = document.getElementById('btnAutoLockSettings');
+  if(!el || !btn) return;
+  if(!autoLockDeadline){
+    el.textContent = '∞';
+    btn.classList.remove('warn');
+    return;
+  }
+  const remainingMs = autoLockDeadline - Date.now();
+  const totalSec = Math.max(0, Math.ceil(remainingMs / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  el.textContent = m + ':' + String(s).padStart(2, '0');
+  btn.classList.toggle('warn', totalSec <= 30);
+}
+
+function updateDirtyIndicator(){
+  const dot = document.getElementById('saveDirtyDot');
+  const dotInline = document.getElementById('moreSaveDirtyDot');
+  if(dot) dot.style.display = state.dirty ? 'block' : 'none';
+  if(dotInline) dotInline.style.display = state.dirty ? 'inline-block' : 'none';
+}
+
+function requestLock(){
+  if(!state.dirty){ lockApp(); return; }
+  unsavedChangesOverlay.classList.add('show');
+}
+document.getElementById('btnLock').onclick = requestLock;
+
+const unsavedChangesOverlay = document.getElementById('unsavedChangesOverlay');
+document.getElementById('btnUnsavedCancel').onclick = () => unsavedChangesOverlay.classList.remove('show');
+document.getElementById('btnUnsavedDiscard').onclick = () => {
+  unsavedChangesOverlay.classList.remove('show');
+  lockApp();
+};
+document.getElementById('btnUnsavedSave').onclick = async () => {
+  unsavedChangesOverlay.classList.remove('show');
+  // Nur sperren, wenn wirklich gespeichert wurde — sonst wären die Änderungen weg.
+  if(await saveToFile()) lockApp();
+};
+
+/* ---------- Änderungsverlauf anzeigen ---------- */
+
+const historyOverlay = document.getElementById('historyOverlay');
+
+function renderHistoryList(){
+  const list = document.getElementById('historyList');
+  const items = (state.history || []).slice().sort((a,b) => b.ts - a.ts);
+  if(items.length === 0){
+    list.innerHTML = `<div class="history-empty">${t('history_empty')}</div>`;
+    return;
+  }
+  const locale = currentLang === 'de' ? 'de-DE' : 'en-US';
+  list.innerHTML = items.map(item => {
+    const dateStr = new Date(item.ts).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' });
+    const detailHtml = item.detail ? `<span class="history-detail"></span>` : '';
+    return `<div class="history-item"><span class="history-ts">${dateStr}</span><span class="history-action"></span>${detailHtml}</div>`;
+  }).join('');
+  // Aktions-/Detailtexte per textContent setzen, um HTML-Injection über Titel zu vermeiden
+  const rows = list.querySelectorAll('.history-item');
+  rows.forEach((row, i) => {
+    row.querySelector('.history-action').textContent = t(items[i].action);
+    const detailEl = row.querySelector('.history-detail');
+    if(detailEl) detailEl.textContent = items[i].detail;
+  });
+}
+
+function openHistoryDialog(){
+  renderHistoryList();
+  historyOverlay.classList.add('show');
+}
+document.getElementById('btnHistory').onclick = openHistoryDialog;
+document.getElementById('btnCloseHistory').onclick = () => {
+  historyOverlay.classList.remove('show');
+};
+
+/* ---------- Über-Dialog ---------- */
+
+const aboutOverlay = document.getElementById('aboutOverlay');
+function openAboutDialog(){ aboutOverlay.classList.add('show'); }
+document.getElementById('btnAboutLock').onclick = openAboutDialog;
+document.getElementById('btnAbout').onclick = openAboutDialog;
+document.getElementById('btnCloseAbout').onclick = () => aboutOverlay.classList.remove('show');
+
+/* ---------- Auto-Sperre-Einstellung ---------- */
+
+const autoLockOverlay = document.getElementById('autoLockOverlay');
+function openAutoLockDialog(){
+  if(!state.key) return;
+  document.getElementById('autoLockSelect').value = String(state.autoLockMinutes);
+  autoLockOverlay.classList.add('show');
+}
+document.getElementById('btnAutoLockSettings').onclick = openAutoLockDialog;
+document.getElementById('btnCloseAutoLock').onclick = () => autoLockOverlay.classList.remove('show');
+document.getElementById('autoLockSelect').addEventListener('change', (e) => {
+  state.autoLockMinutes = parseInt(e.target.value, 10);
+  state.dirty = true;
+  resetAutoLockTimer();
+  addHistory('hist_autolock_changed', state.autoLockMinutes > 0 ? (state.autoLockMinutes + ' min') : t('autolock_never'));
+  showToast(state.autoLockMinutes > 0
+    ? t('autolock_set_toast').replace('{min}', state.autoLockMinutes)
+    : t('autolock_off_toast'));
+});
+
+/* ---------- Master-Passwort ändern ---------- */
+
+const changePasswordOverlay = document.getElementById('changePasswordOverlay');
+
+function openChangePasswordDialog(){
+  document.getElementById('cpCurrentPassword').value = '';
+  document.getElementById('cpNewPassword').value = '';
+  document.getElementById('cpNewPasswordConfirm').value = '';
+  document.getElementById('cpEvalFill').style.width = '0%';
+  document.getElementById('cpStatus').className = 'status-msg';
+  document.getElementById('cpStatus').textContent = '';
+  changePasswordOverlay.classList.add('show');
+  setTimeout(()=> document.getElementById('cpCurrentPassword').focus(), 50);
+}
+function closeChangePasswordDialog(){ changePasswordOverlay.classList.remove('show'); }
+
+document.getElementById('btnChangePassword').onclick = () => {
+  if(!state.key) return;
+  openChangePasswordDialog();
+};
+document.getElementById('btnCancelChangePassword').onclick = closeChangePasswordDialog;
+
+bindPasswordMeter('cpNewPassword', 'cpEvalFill');
+
+function setCpStatus(msg, type){
+  const el = document.getElementById('cpStatus');
+  el.textContent = msg || '';
+  el.className = 'status-msg' + (msg ? ' ' + type : '');
+}
+
+document.getElementById('btnConfirmChangePassword').onclick = async () => {
+  const currentPw = document.getElementById('cpCurrentPassword').value;
+  const newPw = document.getElementById('cpNewPassword').value;
+  const newPw2 = document.getElementById('cpNewPasswordConfirm').value;
+
+  if(!currentPw){ setCpStatus(t('err_current_pw_required'), 'error'); return; }
+  if(newPw.length < 8){ setCpStatus(t('err_new_pw_min'), 'error'); return; }
+  if(newPw !== newPw2){ setCpStatus(t('err_new_pw_mismatch'), 'error'); return; }
+  if(newPw === currentPw){ setCpStatus(t('err_new_pw_same'), 'error'); return; }
+
+  setCpStatus(t('status_checking_pw'), 'info');
+  try{
+    // Aktuelles Passwort verifizieren: kleinen Testwert mit dem aktuellen Schlüssel
+    // verschlüsseln und mit einem aus der Eingabe abgeleiteten Kandidaten-Schlüssel
+    // wieder entschlüsseln — schlägt bei falschem Passwort fehl.
+    const testBlock = await encryptJSON(state.key, { probe: true });
+    const candidateKey = await deriveKey(currentPw, state.salt, state.iterations);
+    await decryptJSON(candidateKey, testBlock.iv, testBlock.data);
+  }catch(err){
+    setCpStatus(t('err_current_pw_wrong'), 'error');
+    return;
+  }
+
+  try{
+    setCpStatus(t('status_reencrypting'), 'info');
+    // Noch nicht geladene Anhänge müssen vor dem Schlüsselwechsel mit dem ALTEN
+    // Schlüssel entschlüsselt werden, sonst gehen sie beim Speichern verloren.
+    await loadAllAttachmentsIntoMemory();
+    state.fileBlockLines = new Map();
+
+    const newSalt = randomBytes(16);
+    const newKey = await deriveKey(newPw, newSalt, PBKDF2_ITERATIONS);
+    state.key = newKey;
+    state.salt = newSalt;
+    state.iterations = PBKDF2_ITERATIONS;
+    addHistory('hist_password_changed', '');
+    state.dirty = true;
+    closeChangePasswordDialog();
+    // Ehrliche Rückmeldung: schlägt das Speichern fehl, steht in der Datei noch
+    // das alte Passwort, während der Speicher schon den neuen Schlüssel nutzt.
+    showToast(await saveToFile() ? t('toast_pw_changed') : t('toast_pw_changed_unsaved'));
+  }catch(err){
+    setCpStatus(t('err_reencrypt_failed') + err.message, 'error');
+  }
+};
+
+/* ---------- Speichern (Datei) ---------- */
+
+async function buildVaultLines(){
+  const lines = [];
+  lines.push(JSON.stringify({
+    type: 'header',
+    format: 'mmo-vault-v2',
+    salt: bytesToB64(state.salt),
+    iterations: state.iterations
+  }));
+
+  // Text-Block: Einträge OHNE Anhangs-Rohdaten (nur Metadaten) + Verlauf — klein, schnell zu entschlüsseln
+  const strippedEntries = state.entries.map(e => ({
+    ...e,
+    attachments: (e.attachments || []).map(a => ({ id: a.id, name: a.name, type: a.type, size: a.size }))
+  }));
+  const textPayload = { entries: strippedEntries, history: state.history || [], autoLockMinutes: state.autoLockMinutes };
+  const textEnc = await encryptJSON(state.key, textPayload);
+  lines.push(JSON.stringify({ type: 'text', iv: textEnc.iv, data: textEnc.data }));
+
+  // Datei-Blöcke: ein eigener Block pro Anhang. Unveränderte Anhänge werden
+  // 1:1 aus der Backing-Map wiederverwendet (kein unnötiges Neu-Verschlüsseln).
+  const referencedIds = new Set();
+  for(const entry of state.entries){
+    for(const att of (entry.attachments || [])){
+      referencedIds.add(att.id);
+      if(state.fileBlockLines.has(att.id)){
+        const existing = state.fileBlockLines.get(att.id);
+        lines.push(JSON.stringify({ type: 'file', id: att.id, iv: existing.iv, data: existing.data }));
+      } else if(att.dataB64){
+        // Die ID wandert mit in den verschlüsselten Block: der Klartext ist damit an
+        // seinen Eintrag gebunden und ein Vertauschen zweier Blöcke fällt beim Laden auf.
+        const fileEnc = await encryptJSON(state.key, { id: att.id, b: att.dataB64 });
+        lines.push(JSON.stringify({ type: 'file', id: att.id, iv: fileEnc.iv, data: fileEnc.data }));
+        state.fileBlockLines.set(att.id, { iv: fileEnc.iv, data: fileEnc.data });
+      }
+    }
+  }
+  // Verwaiste Blöcke (Anhänge, die nicht mehr referenziert werden) bereinigen
+  for(const id of Array.from(state.fileBlockLines.keys())){
+    if(!referencedIds.has(id)) state.fileBlockLines.delete(id);
+  }
+
+  return lines;
+}
+
+/* Schreibt über die File System Access API und macht den Vorgang überprüfbar.
+   createWritable() leert die Zieldatei sofort — bricht das Schreiben danach ab,
+   stünde dort ohne diese Absicherung eine leere oder halbe Vault. Deshalb:
+   alten Inhalt merken, schreiben, zurücklesen, und im Fehlerfall zurückrollen. */
+async function writeVaultToHandle(handle, jsonText){
+  let previous = null;
+  try{ previous = await (await handle.getFile()).text(); }
+  catch(err){ previous = null; } // neue Datei: es gibt nichts zurückzurollen
+  try{
+    const writable = await handle.createWritable();
+    try{
+      await writable.write(jsonText);
+      await writable.close();
+    }catch(err){
+      try{ await writable.abort(); }catch(abortErr){ /* Writable war schon zu */ }
+      throw err;
+    }
+    const written = await (await handle.getFile()).text();
+    if(written !== jsonText) throw new Error(t('err_save_verify'));
+    parseVaultText(written); // wirft, falls das Ergebnis nicht wieder ladbar wäre
+  }catch(err){
+    if(previous !== null){
+      try{
+        const restore = await handle.createWritable();
+        await restore.write(previous);
+        await restore.close();
+      }catch(restoreErr){ /* mehr als versuchen geht hier nicht */ }
+    }
+    throw err;
+  }
+}
+
+function downloadVaultFile(jsonText){
+  const blob = new Blob([jsonText], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (state.fileHandle && state.fileHandle.name) || 'mmo-vault.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  // Nicht sofort widerrufen — sonst bricht der Download in manchen Browsern ab.
+  setTimeout(()=> URL.revokeObjectURL(url), 10000);
+  state.dirty = false;
+  showToast(t('toast_saved_download'));
+  return true;
+}
+
+/* Liefert true nur, wenn die Daten wirklich weggeschrieben wurden. state.dirty
+   bleibt sonst gesetzt — die Aufrufer verlassen sich darauf, bevor sie sperren
+   oder einen Schlüsselwechsel als abgeschlossen melden. */
+async function saveToFile(){
+  if(!state.key) return false;
+  const jsonText = (await buildVaultLines()).join('\n');
+
+  if(!('showSaveFilePicker' in window) || state.fsaBlocked){
+    return downloadVaultFile(jsonText);
+  }
+
+  if(!state.fileHandle){
+    try{
+      state.fileHandle = await window.showSaveFilePicker({
+        suggestedName: 'mmo-vault.json',
+        types: [{ description: 'Vault-Datei', accept: {'application/json': ['.json']} }]
+      });
+    }catch(err){
+      if(err.name === 'AbortError'){
+        // Nutzer hat den Speichern-Dialog bewusst abgebrochen. Kein stiller
+        // Download, und "ungespeichert" bleibt stehen.
+        showToast(t('toast_save_cancelled'));
+        return false;
+      }
+      if(isCrossOriginBlock(err)){
+        state.fsaBlocked = true;
+        refreshRememberedFileButton();
+        return downloadVaultFile(jsonText);
+      }
+      showToast(t('err_save_failed') + (err.message || err.name));
+      return false;
+    }
+  }
+
+  try{
+    await writeVaultToHandle(state.fileHandle, jsonText);
+    await storeFileHandle(state.fileHandle);
+    document.getElementById('currentFileLabel').textContent = state.fileHandle.name;
+    state.dirty = false;
+    showToast(t('toast_saved_file'));
+    return true;
+  }catch(err){
+    if(isCrossOriginBlock(err)){
+      state.fsaBlocked = true;
+      refreshRememberedFileButton();
+      return downloadVaultFile(jsonText);
+    }
+    showToast(t('err_save_failed') + (err.message || err.name));
+    return false;
+  }
+}
+
+document.getElementById('btnSave').onclick = () => { saveToFile(); };
+
+/* ---------- Einträge rendern ---------- */
+
+function uid(){ return 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+let searchTerm = '';
+document.getElementById('searchInput').addEventListener('input', (e)=>{
+  searchTerm = e.target.value.toLowerCase();
+  renderEntries();
+});
+
+let activeTagFilter = 'all';
+
+function filteredEntries(){
+  return state.entries.filter(en => {
+    const type = en.type || 'zugang';
+    if(activeTypeFilter !== 'all' && type !== activeTypeFilter) return false;
+    if(activeTagFilter !== 'all' && !(en.tags || []).includes(activeTagFilter)) return false;
+    if(!searchTerm) return true;
+    return (en.title||'').toLowerCase().includes(searchTerm) ||
+           (en.username||'').toLowerCase().includes(searchTerm) ||
+           (en.notes||'').toLowerCase().includes(searchTerm) ||
+           (en.tags||[]).some(t => t.toLowerCase().includes(searchTerm));
+  });
+}
+
+function refreshTagFilterChips(){
+  const row = document.getElementById('tagFilterRow');
+  const allTags = Array.from(new Set(state.entries.flatMap(en => en.tags || []))).sort((a,b)=>a.localeCompare(b));
+  if(allTags.length === 0){
+    row.style.display = 'none';
+    row.innerHTML = '';
+    activeTagFilter = 'all';
+    return;
+  }
+  if(activeTagFilter !== 'all' && !allTags.includes(activeTagFilter)){
+    activeTagFilter = 'all';
+  }
+  row.style.display = 'flex';
+  row.innerHTML = '';
+  const allChip = document.createElement('button');
+  allChip.className = 'chip' + (activeTagFilter === 'all' ? ' active' : '');
+  allChip.textContent = t('tag_filter_all');
+  allChip.onclick = () => { activeTagFilter = 'all'; renderEntries(); };
+  row.appendChild(allChip);
+  allTags.forEach(tag => {
+    const chip = document.createElement('button');
+    chip.className = 'chip' + (activeTagFilter === tag ? ' active' : '');
+    chip.textContent = tag;
+    chip.onclick = () => { activeTagFilter = tag; renderEntries(); };
+    row.appendChild(chip);
+  });
+}
+
+/* Nur http/https öffnen. Alles andere — insbesondere javascript: — wird verworfen,
+   statt es wie früher mit einem vorangestellten "https://" unbrauchbar zu machen. */
+function safeExternalUrl(raw){
+  const value = (raw || '').trim();
+  if(!value) return null;
+  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : 'https://' + value;
+  let url;
+  try{ url = new URL(withScheme); }catch(err){ return null; }
+  return (url.protocol === 'http:' || url.protocol === 'https:') ? url.href : null;
+}
+
+function renderEntries(){
+  refreshTagFilterChips();
+  const grid = document.getElementById('entryGrid');
+  const empty = document.getElementById('emptyState');
+  const list = filteredEntries();
+  grid.innerHTML = '';
+  // Zwischen "noch gar nichts angelegt" und "Filter/Suche ohne Treffer"
+  // unterscheiden — sonst steht man vor einer wortlos leeren Seite.
+  const noEntriesAtAll = state.entries.length === 0;
+  empty.style.display = (noEntriesAtAll || list.length === 0) ? 'block' : 'none';
+  document.getElementById('emptyStateTitle').textContent = noEntriesAtAll ? t('empty_title') : t('empty_filtered_title');
+  document.getElementById('emptyStateText').textContent = noEntriesAtAll ? t('empty_text') : t('empty_filtered_text');
+
+  list.forEach(entry => {
+    const type = entry.type || 'zugang';
+    const isZugang = type === 'zugang';
+    const tags = entry.tags || [];
+    const attachments = entry.attachments || [];
+    const card = document.createElement('div');
+    card.className = 'entry-card';
+    card.dataset.id = entry.id;
+
+    card.innerHTML = `
+      <div class="entry-head">
+        <div>
+          <p class="entry-title"></p>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+          <span class="type-badge"></span>
+          <button class="mini-btn entry-menu-btn" title="${t('options_tt')}">
+            <svg viewBox="0 0 24 24"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>
+          </button>
+        </div>
+      </div>
+      ${isZugang && entry.url ? `
+      <div class="entry-row" data-role="urlrow">
+        <span class="val" data-role="urlval"></span>
+        <div class="row-actions">
+          <button class="mini-btn" data-act="openUrl" title="${t('open_tt')}">
+            <svg viewBox="0 0 24 24"><path d="M14 3v2h3.59L8.29 14.29l1.41 1.41L19 6.41V10h2V3zM19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2z"/></svg>
+          </button>
+          <button class="mini-btn" data-act="copyUrl" title="${t('copy_tt')}">
+            <svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11z"/></svg>
+          </button>
+        </div>
+      </div>` : ''}
+      ${isZugang && entry.username ? `
+      <div class="entry-row" data-role="userrow">
+        <span class="val" data-role="userval"></span>
+        <div class="row-actions">
+          <button class="mini-btn" data-act="copyUser" title="${t('copy_tt')}">
+            <svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11z"/></svg>
+          </button>
+        </div>
+      </div>` : ''}
+      ${isZugang ? `
+      <div class="entry-row masked" data-role="pwrow">
+        <span class="val" data-role="pwval">••••••••••••</span>
+        <div class="row-actions">
+          <button class="mini-btn" data-act="togglePw" title="${t('toggle_pw_tt')}">
+            <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.7 7.6 1 12c1.7 4.4 6 7.5 11 7.5s9.3-3.1 11-7.5c-1.7-4.4-6-7.5-11-7.5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>
+          </button>
+          <button class="mini-btn" data-act="copyPw" title="${t('copy_tt')}">
+            <svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11z"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="totp-slot"></div>` : ''}
+      <div class="notes-slot" style="${isZugang ? 'margin-top:8px;' : 'margin-top:10px;'} font-size:12.5px; color:var(--on-surface-variant); white-space:pre-wrap;"></div>
+      ${attachments.length ? `
+      <div class="entry-row" data-role="attachrow" style="cursor:pointer;">
+        <span class="val">📎 ${attachments.length}${t('files_count')}</span>
+      </div>
+      <div class="attachment-inline-list" data-role="attachlist" style="display:none;"></div>` : ''}
+      ${tags.length ? `<div class="entry-tags" data-role="tagpills"></div>` : ''}
+    `;
+
+    card.querySelector('.entry-title').textContent = entry.title || t('untitled');
+    card.querySelector('.type-badge').textContent = t(typeConfig(type).badgeKey);
+    if(entry.notes){
+      card.querySelector('.notes-slot').textContent = entry.notes;
+    }
+
+    if(tags.length){
+      const tagWrap = card.querySelector('[data-role="tagpills"]');
+      tags.forEach(tag => {
+        const pill = document.createElement('span');
+        pill.className = 'tag-pill';
+        pill.textContent = tag;
+        pill.style.cursor = 'pointer';
+        pill.onclick = () => { activeTagFilter = tag; renderEntries(); };
+        tagWrap.appendChild(pill);
+      });
+    }
+
+    if(attachments.length){
+      const attachRow = card.querySelector('[data-role="attachrow"]');
+      const attachListEl = card.querySelector('[data-role="attachlist"]');
+      attachRow.onclick = () => {
+        const isHidden = attachListEl.style.display === 'none';
+        if(isHidden){
+          attachListEl.innerHTML = '';
+          attachments.forEach(att => {
+            const row = document.createElement('div');
+            row.className = 'attachment-inline-item';
+            row.innerHTML = `<span class="att-name"></span><button class="mini-btn" title="${t('download_tt')}"><svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5zM19 9h-4V3H9v6H5l7 7z"/></svg></button>`;
+            row.querySelector('.att-name').textContent = att.name + ' · ' + formatBytes(att.size);
+            row.querySelector('button').onclick = (ev) => { ev.stopPropagation(); downloadAttachment(att); };
+            attachListEl.appendChild(row);
+          });
+          attachListEl.style.display = 'block';
+        } else {
+          attachListEl.style.display = 'none';
+        }
+      };
+    }
+
+    if(isZugang){
+      if(entry.url){
+        card.querySelector('[data-role="urlval"]').textContent = entry.url;
+        card.querySelector('[data-act="openUrl"]').onclick = () => {
+          const href = safeExternalUrl(entry.url);
+          if(!href){ showToast(t('err_bad_url')); return; }
+          window.open(href, '_blank', 'noopener,noreferrer');
+        };
+        card.querySelector('[data-act="copyUrl"]').onclick = () => copyToClipboard(entry.url, 'toast_url_copied');
+      }
+      if(entry.username){
+        card.querySelector('[data-role="userval"]').textContent = entry.username;
+        card.querySelector('[data-act="copyUser"]').onclick = () => copyToClipboard(entry.username, 'toast_user_copied');
+      }
+
+      // Passwort Toggle/Copy
+      const pwVal = card.querySelector('[data-role="pwval"]');
+      const pwRow = card.querySelector('[data-role="pwrow"]');
+      card.querySelector('[data-act="togglePw"]').onclick = () => {
+        const masked = pwRow.classList.toggle('masked');
+        pwVal.textContent = masked ? '•'.repeat(Math.min((entry.password||'').length,16)) : entry.password;
+      };
+      card.querySelector('[data-act="copyPw"]').onclick = () => copyToClipboard(entry.password||'', 'toast_pw_copied', true);
+
+      // TOTP-Block
+      if(entry.totp){
+        const slot = card.querySelector('.totp-slot');
+        slot.innerHTML = `
+          <div class="totp-block">
+            <div class="totp-dial">
+              <svg viewBox="0 0 36 36">
+                <circle class="track" cx="18" cy="18" r="15"></circle>
+                <circle class="prog" cx="18" cy="18" r="15" stroke-dasharray="94.2" stroke-dashoffset="0"></circle>
+              </svg>
+            </div>
+            <div class="totp-code">------</div>
+            <button class="mini-btn totp-copy" data-act="copyTotp" title="${t('copy_code_tt')}">
+              <svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11z"/></svg>
+            </button>
+          </div>`;
+        slot.querySelector('[data-act="copyTotp"]').onclick = () => {
+          const code = slot.querySelector('.totp-code').textContent;
+          copyToClipboard(code.replace(/\s/g,''), 'toast_totp_copied', true);
+        };
+      }
+    }
+
+    // Kontextmenü
+    card.querySelector('.entry-menu-btn').onclick = (ev) => openEntryMenu(ev, entry.id);
+
+    grid.appendChild(card);
+  });
+
+  updateAllTotp();
+}
+
+/* ---------- TOTP Live-Update ---------- */
+
+function startTotpTicker(){
+  clearInterval(totpTickHandle);
+  totpTickHandle = setInterval(updateAllTotp, 1000);
+}
+
+async function updateAllTotp(){
+  const cards = Array.from(document.querySelectorAll('.entry-card'));
+  // Parallel statt nacheinander: bei vielen Einträgen war ein Durchlauf sonst
+  // langsamer als das 1-Sekunden-Intervall, das ihn auslöst.
+  await Promise.all(cards.map(async card => {
+    const entry = state.entries.find(e => e.id === card.dataset.id);
+    if(!entry || !entry.totp) return;
+    const result = await totpForEntry(entry);
+    if(!result) return;
+    const codeEl = card.querySelector('.totp-code');
+    const progEl = card.querySelector('.totp-dial .prog');
+    // Bei 6 Stellen 3+3 gruppieren, sonst in der Mitte trennen.
+    const half = Math.ceil(result.code.length / 2);
+    if(codeEl) codeEl.textContent = result.code.slice(0, half) + ' ' + result.code.slice(half);
+    if(progEl){
+      const circumference = 2 * Math.PI * 15;
+      const fraction = result.secondsRemaining / result.period;
+      progEl.setAttribute('stroke-dasharray', circumference.toFixed(2));
+      progEl.setAttribute('stroke-dashoffset', (circumference * (1-fraction)).toFixed(2));
+    }
+  }));
+}
+
+/* ---------- Kontextmenü Logik ---------- */
+
+const entryMenu = document.getElementById('entryMenu');
+let menuEntryId = null;
+
+function openEntryMenu(ev, id){
+  ev.stopPropagation();
+  menuEntryId = id;
+  const rect = ev.currentTarget.getBoundingClientRect();
+  entryMenu.classList.add('show');
+  // Erst einblenden, dann messen — vorher hat das Menü keine Maße.
+  const menuRect = entryMenu.getBoundingClientRect();
+  const viewportW = document.documentElement.clientWidth;
+  const viewportH = document.documentElement.clientHeight;
+  // Rechtsbündig am Button ausrichten und in den Viewport klemmen, damit das
+  // Menü auf schmalen Bildschirmen nicht links herausragt.
+  const left = Math.min(
+    Math.max(8, rect.right - menuRect.width),
+    Math.max(8, viewportW - menuRect.width - 8)
+  );
+  // Nach unten aufklappen, außer es ist unten kein Platz mehr.
+  const top = (rect.bottom + 4 + menuRect.height > viewportH && rect.top - 4 - menuRect.height > 0)
+    ? rect.top - 4 - menuRect.height
+    : rect.bottom + 4;
+  entryMenu.style.left = (window.scrollX + left) + 'px';
+  entryMenu.style.top = (window.scrollY + top) + 'px';
+}
+document.addEventListener('click', ()=> entryMenu.classList.remove('show'));
+
+document.getElementById('menuEdit').onclick = () => {
+  const entry = state.entries.find(e => e.id === menuEntryId);
+  // Ohne Guard würde ein nicht mehr vorhandener Eintrag den Dialog als
+  // "Neuer Eintrag" öffnen.
+  if(entry) openEntryDialog(entry);
+};
+document.getElementById('menuDelete').onclick = () => {
+  const entry = state.entries.find(e => e.id === menuEntryId);
+  if(entry && confirm(`„${entry.title || t('untitled')}“ ${t('confirm_delete_entry')}`)){
+    totpCodeCache.delete(entry.id);
+    state.entries = state.entries.filter(e => e.id !== menuEntryId);
+    addHistory('hist_entry_deleted', entry.title || t('untitled'));
+    state.dirty = true;
+    renderEntries();
+    showToast(t('toast_entry_deleted'));
+  }
+};
+
+/* ---------- Eintrag-Dialog ---------- */
+
+const entryOverlay = document.getElementById('entryDialogOverlay');
+
+function setDialogType(type){
+  document.querySelectorAll('#typeSelectRow .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.type === type));
+  document.getElementById('entryType').value = type;
+  document.getElementById('fieldsZugang').style.display = type === 'zugang' ? 'block' : 'none';
+  const notesLabel = document.querySelector('#notesFieldWrap label');
+  const notesArea = document.getElementById('entryNotes');
+  if(type === 'freitext'){
+    notesLabel.textContent = t('content_label');
+    notesArea.rows = 8;
+  } else {
+    notesLabel.textContent = t('notes_label');
+    notesArea.rows = 2;
+  }
+}
+document.querySelectorAll('#typeSelectRow .seg-btn').forEach(btn => {
+  btn.onclick = () => setDialogType(btn.dataset.type);
+});
+
+/* ---------- Tags (Chip-Eingabe im Eintrag-Dialog) ---------- */
+
+let currentTags = [];
+
+function renderTagChips(){
+  const container = document.getElementById('tagChipsContainer');
+  container.innerHTML = '';
+  currentTags.forEach(tag => {
+    const chip = document.createElement('span');
+    chip.className = 'tag-chip';
+    const label = document.createElement('span');
+    label.textContent = tag;
+    chip.appendChild(label);
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = '×';
+    removeBtn.onclick = () => {
+      currentTags = currentTags.filter(t => t !== tag);
+      renderTagChips();
+    };
+    chip.appendChild(removeBtn);
+    container.appendChild(chip);
+  });
+}
+
+function addTagFromInput(){
+  const input = document.getElementById('tagInputField');
+  const raw = input.value.trim().replace(/,$/, '');
+  if(raw && !currentTags.some(t => t.toLowerCase() === raw.toLowerCase())){
+    currentTags.push(raw);
+    renderTagChips();
+  }
+  input.value = '';
+}
+
+document.getElementById('tagInputField').addEventListener('keydown', (e) => {
+  if(e.key === 'Enter' || e.key === ','){
+    e.preventDefault();
+    addTagFromInput();
+  } else if(e.key === 'Backspace' && e.target.value === '' && currentTags.length){
+    currentTags.pop();
+    renderTagChips();
+  }
+});
+document.getElementById('tagInputField').addEventListener('blur', addTagFromInput);
+
+/* ---------- Dateianhänge im Eintrag-Dialog ---------- */
+
+let currentAttachments = [];
+const MAX_ATTACHMENT_WARN_BYTES = 8 * 1024 * 1024; // 8 MB — nur ein Hinweis, keine harte Grenze
+
+function formatBytes(bytes){
+  if(bytes < 1024) return bytes + ' B';
+  if(bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+}
+
+function renderAttachmentList(){
+  const list = document.getElementById('attachmentList');
+  list.innerHTML = '';
+  currentAttachments.forEach(att => {
+    const row = document.createElement('div');
+    row.className = 'attachment-item';
+    row.innerHTML = `
+      <span class="att-name"></span>
+      <span class="att-size"></span>
+      <div class="att-actions">
+        <button type="button" class="mini-btn" data-act="download" title="${t('download_tt')}">
+          <svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5zM19 9h-4V3H9v6H5l7 7z"/></svg>
+        </button>
+        <button type="button" class="mini-btn" data-act="remove" title="${t('remove_tt')}">
+          <svg viewBox="0 0 24 24"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z"/></svg>
+        </button>
+      </div>`;
+    row.querySelector('.att-name').textContent = att.name;
+    row.querySelector('.att-size').textContent = formatBytes(att.size);
+    row.querySelector('[data-act="download"]').onclick = () => downloadAttachment(att);
+    row.querySelector('[data-act="remove"]').onclick = () => {
+      currentAttachments = currentAttachments.filter(a => a.id !== att.id);
+      renderAttachmentList();
+    };
+    list.appendChild(row);
+  });
+}
+
+/* Lädt/entschlüsselt einen Anhang bei Bedarf ("nachladen"): liegt er noch nur als
+   verschlüsselter Block in state.fileBlockLines vor, wird er jetzt entschlüsselt
+   und im Speicher zwischengespeichert (att.dataB64), statt schon beim Entsperren
+   pauschal alle Anhänge zu entschlüsseln. */
+async function ensureAttachmentLoaded(att){
+  if(att.dataB64) return att.dataB64;
+  const block = state.fileBlockLines.get(att.id);
+  if(!block) throw new Error(t('err_attachment_missing'));
+  const payload = await decryptJSON(state.key, block.iv, block.data);
+  // Blöcke aus älteren Dateien tragen noch keine ID; neue schon — dann muss sie passen.
+  if(payload.id && payload.id !== att.id) throw new Error(t('err_attachment_mismatch'));
+  att.dataB64 = payload.b;
+  return att.dataB64;
+}
+
+/* Lädt vor einem Master-Passwort-Wechsel alle noch nicht geladenen Anhänge mit
+   dem AKTUELLEN (alten) Schlüssel nach, damit beim Neu-Verschlüsseln nichts verloren geht. */
+async function loadAllAttachmentsIntoMemory(){
+  for(const entry of state.entries){
+    for(const att of (entry.attachments || [])){
+      await ensureAttachmentLoaded(att);
+    }
+  }
+}
+
+async function downloadAttachment(att){
+  try{
+    const dataB64 = await ensureAttachmentLoaded(att);
+    const bytes = b64ToBytes(dataB64);
+    const blob = new Blob([bytes], { type: att.type || 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = att.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 10000);
+  }catch(err){
+    showToast(t('err_attachment_load') + err.message);
+  }
+}
+
+document.getElementById('btnAddAttachment').onclick = () => document.getElementById('attachmentFileInput').click();
+document.getElementById('attachmentFileInput').addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files || []);
+  for(const file of files){
+    if(file.size > MAX_ATTACHMENT_WARN_BYTES){
+      showToast(t('toast_attachment_large', { name: file.name, size: formatBytes(file.size) }));
+    }
+    const buf = await file.arrayBuffer();
+    currentAttachments.push({
+      id: uid(),
+      name: file.name,
+      type: file.type || 'application/octet-stream',
+      size: file.size,
+      dataB64: bytesToB64(new Uint8Array(buf))
+    });
+  }
+  renderAttachmentList();
+  e.target.value = '';
+});
+
+/* TOTP-Parameter des gerade bearbeiteten Eintrags. Sie stammen aus dem QR-Code
+   und sind in der Oberfläche nicht editierbar, müssen aber erhalten bleiben —
+   sonst würden für 8-stellige oder SHA-256/512-Konten falsche Codes erzeugt. */
+let currentTotpParams = { ...TOTP_DEFAULTS };
+
+function updateTotpParamsHint(){
+  const hint = document.getElementById('totpParamsHint');
+  if(!hint) return;
+  const secret = document.getElementById('entryTotp').value.trim();
+  if(!secret || isDefaultTotpParams(currentTotpParams)){
+    hint.style.display = 'none';
+    hint.textContent = '';
+    return;
+  }
+  hint.textContent = t('totp_params_fmt', currentTotpParams);
+  hint.style.display = 'block';
+}
+
+function openEntryDialog(entry){
+  document.getElementById('entryDialogTitle').textContent = entry ? t('edit_entry') : t('new_entry');
+  document.getElementById('entryId').value = entry ? entry.id : '';
+  document.getElementById('entryTitle').value = entry ? entry.title || '' : '';
+  document.getElementById('entryUrl').value = entry ? entry.url || '' : '';
+  document.getElementById('entryUsername').value = entry ? entry.username || '' : '';
+  document.getElementById('entryPassword').value = entry ? entry.password || '' : '';
+  document.getElementById('entryTotp').value = entry ? entry.totp || '' : '';
+  document.getElementById('entryNotes').value = entry ? entry.notes || '' : '';
+  currentTotpParams = entry ? totpParamsOf(entry) : { ...TOTP_DEFAULTS };
+  currentTags = entry ? (entry.tags || []).slice() : [];
+  currentAttachments = entry ? (entry.attachments || []).slice() : [];
+  document.getElementById('tagInputField').value = '';
+  renderTagChips();
+  renderAttachmentList();
+  updateTotpParamsHint();
+  setDialogType(entry ? (entry.type || 'zugang') : 'zugang');
+  entryOverlay.classList.add('show');
+  setTimeout(()=> document.getElementById('entryTitle').focus(), 50);
+}
+function closeEntryDialog(){ entryOverlay.classList.remove('show'); }
+
+document.getElementById('btnAddEntry').onclick = () => openEntryDialog(null);
+document.getElementById('btnCancelEntry').onclick = closeEntryDialog;
+
+document.getElementById('btnSaveEntry').onclick = () => {
+  const id = document.getElementById('entryId').value;
+  const type = document.getElementById('entryType').value || 'zugang';
+  const title = document.getElementById('entryTitle').value.trim();
+  if(!title){ showToast(t('toast_title_required')); return; }
+  addTagFromInput();
+  const isZugang = type === 'zugang';
+  const totp = isZugang ? document.getElementById('entryTotp').value.replace(/\s/g,'') : '';
+  const data = {
+    type,
+    title,
+    url: isZugang ? document.getElementById('entryUrl').value.trim() : '',
+    username: isZugang ? document.getElementById('entryUsername').value.trim() : '',
+    password: isZugang ? document.getElementById('entryPassword').value : '',
+    totp,
+    totpDigits: currentTotpParams.digits,
+    totpPeriod: currentTotpParams.period,
+    totpAlgorithm: currentTotpParams.algorithm,
+    notes: document.getElementById('entryNotes').value.trim(),
+    tags: currentTags.slice(),
+    attachments: currentAttachments.slice()
+  };
+  if(id){
+    const idx = state.entries.findIndex(e => e.id === id);
+    if(idx > -1) state.entries[idx] = {...state.entries[idx], ...data};
+    totpCodeCache.delete(id);
+    addHistory('hist_entry_edited', title);
+  } else {
+    state.entries.push({ id: uid(), ...data });
+    addHistory('hist_entry_created', title);
+  }
+  state.dirty = true;
+  closeEntryDialog();
+  renderEntries();
+  showToast(t('toast_entry_saved'));
+};
+
+/* ---------- Passwort-Generator ---------- */
+
+document.getElementById('genLength').addEventListener('input', (e)=>{
+  document.getElementById('genLengthVal').textContent = e.target.value;
+});
+
+document.getElementById('btnGenPw').onclick = () => {
+  const len = parseInt(document.getElementById('genLength').value, 10);
+  const withSymbols = document.getElementById('genSymbols').checked;
+  let chars = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  if(withSymbols) chars += '!@#$%^&*_-+=?';
+  // randomIndex() statt "zufälliges Byte % Alphabetlänge": bei 57 bzw. 70 Zeichen
+  // geht 256 nicht glatt auf, wodurch die vorderen Zeichen sonst häufiger kämen.
+  let pw = '';
+  for(let i=0;i<len;i++) pw += chars[randomIndex(chars.length)];
+  document.getElementById('entryPassword').value = pw;
+};
+
+/* ---------- QR-Code-Import für TOTP-Secrets ---------- */
+/* Nutzt die native BarcodeDetector-API des Browsers (kein externer Code/CDN).
+   Verfügbarkeit ist browserabhängig (v.a. Chrome/Edge; Firefox/Safari teils ohne). */
+
+const qrDropzone = document.getElementById('qrDropzone');
+const qrFileInput = document.getElementById('qrFileInput');
+
+qrDropzone.onclick = () => qrFileInput.click();
+// Die Dropzone ist fokussierbar (tabindex) — dann muss sie sich auch per
+// Tastatur auslösen lassen.
+qrDropzone.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter' || e.key === ' '){
+    e.preventDefault();
+    qrFileInput.click();
+  }
+});
+qrFileInput.onchange = (e) => {
+  const file = e.target.files[0];
+  if(file) decodeQrFromImageFile(file);
+  e.target.value = '';
+};
+['dragover','dragenter'].forEach(evt => qrDropzone.addEventListener(evt, (e) => {
+  e.preventDefault();
+  qrDropzone.classList.add('dragover');
+}));
+['dragleave','drop'].forEach(evt => qrDropzone.addEventListener(evt, (e) => {
+  e.preventDefault();
+  qrDropzone.classList.remove('dragover');
+}));
+qrDropzone.addEventListener('drop', (e) => {
+  const file = e.dataTransfer.files && e.dataTransfer.files[0];
+  if(file) decodeQrFromImageFile(file);
+});
+
+async function decodeQrFromImageFile(file){
+  if(!file.type.startsWith('image/')){
+    showToast(t('err_qr_not_image'));
+    return;
+  }
+  if(!('BarcodeDetector' in window)){
+    showToast(t('err_qr_unsupported'));
+    return;
+  }
+  try{
+    const bitmap = await createImageBitmap(file);
+    const detector = new BarcodeDetector({ formats: ['qr_code'] });
+    const results = await detector.detect(bitmap);
+    if(!results.length){
+      showToast(t('err_qr_none'));
+      return;
+    }
+    applyOtpAuthUri(results[0].rawValue);
+  }catch(err){
+    showToast(t('err_qr_failed') + err.message);
+  }
+}
+
+function applyOtpAuthUri(raw){
+  let url;
+  try{ url = new URL(raw); }catch(err){ url = null; }
+  if(!url || url.protocol !== 'otpauth:'){
+    showToast(t('err_qr_not_otpauth'));
+    return;
+  }
+  // otpauth://TYPE/Label?... — HOTP ist zählerbasiert und lässt sich mit einer
+  // reinen Zeitberechnung nicht abbilden.
+  if(url.host.toLowerCase() === 'hotp'){
+    showToast(t('err_qr_hotp'));
+    return;
+  }
+  const secret = url.searchParams.get('secret');
+  if(!secret){
+    showToast(t('err_qr_no_secret'));
+    return;
+  }
+  document.getElementById('entryTotp').value = secret.replace(/\s/g,'');
+
+  // digits/period/algorithm mit übernehmen: ohne sie erzeugt die App für
+  // 8-stellige oder SHA-256/512-Konten still falsche Codes.
+  const digits = parseInt(url.searchParams.get('digits'), 10);
+  const period = parseInt(url.searchParams.get('period'), 10);
+  currentTotpParams = totpParamsOf({
+    totpDigits: Number.isNaN(digits) ? undefined : digits,
+    totpPeriod: Number.isNaN(period) ? undefined : period,
+    totpAlgorithm: url.searchParams.get('algorithm')
+  });
+  updateTotpParamsHint();
+
+  // Label-Format: otpauth://totp/Issuer:Account?issuer=Issuer&secret=...
+  const label = decodeURIComponent(url.pathname.replace(/^\/+/,''));
+  const issuerParam = url.searchParams.get('issuer');
+  const [labelIssuer, labelAccount] = label.includes(':') ? label.split(/:(.+)/) : [label, ''];
+
+  const titleField = document.getElementById('entryTitle');
+  const userField = document.getElementById('entryUsername');
+  if(!titleField.value.trim()) titleField.value = issuerParam || labelIssuer || t('type_zugang_badge');
+  if(!userField.value.trim() && labelAccount) userField.value = labelAccount;
+
+  showToast(t('toast_qr_imported'));
+}
+
+/* Wird das Secret von Hand geleert oder ersetzt, passen die aus einem früheren
+   QR-Code stammenden Parameter nicht mehr — dann zurück auf die Standardwerte. */
+document.getElementById('entryTotp').addEventListener('input', (e) => {
+  if(!e.target.value.trim()) currentTotpParams = { ...TOTP_DEFAULTS };
+  updateTotpParamsHint();
+});
+
+/* Beim Verlassen der Seite warnen, falls ungespeicherte Änderungen */
+window.addEventListener('beforeunload', (e)=>{
+  if(state.dirty){
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+/* ---------- Tastatur- und Backdrop-Bedienung der Dialoge ---------- */
+/* Ohne das ließen sich Dialoge nur über ihren Abbrechen-Button verlassen —
+   für Tastaturnutzer eine Sackgasse. */
+
+// Reihenfolge = Priorität beim Schließen (oberster Dialog zuerst).
+const DIALOG_CLOSE_ORDER = [
+  'unsavedChangesOverlay', 'entryDialogOverlay', 'changePasswordOverlay',
+  'autoLockOverlay', 'historyOverlay', 'aboutOverlay'
+];
+
+function closeTopmostDialog(){
+  if(entryMenu.classList.contains('show')){ entryMenu.classList.remove('show'); return true; }
+  if(moreMenu.classList.contains('show')){ closeMoreMenu(); return true; }
+  for(const id of DIALOG_CLOSE_ORDER){
+    const el = document.getElementById(id);
+    if(el && el.classList.contains('show')){ el.classList.remove('show'); return true; }
+  }
+  return false;
+}
+
+document.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape' && closeTopmostDialog()) e.preventDefault();
+});
+
+// Klick auf den abgedunkelten Hintergrund schließt nur Dialoge, in denen nichts
+// eingegeben wird — bei Eintrag und Passwortwechsel wären sonst Eingaben weg.
+document.querySelectorAll('.overlay[data-dismissable="true"]').forEach(overlay => {
+  overlay.addEventListener('click', (e) => {
+    if(e.target === overlay) overlay.classList.remove('show');
+  });
+});
+
+/* ---------- "Mehr"-Menü (fasst Topbar-Icons auf schmalen Bildschirmen zusammen) ---------- */
+
+const moreMenu = document.getElementById('moreMenu');
+const moreMenuBackdrop = document.getElementById('moreMenuBackdrop');
+function updateMoreLangLabel(){
+  document.getElementById('moreLangLabel').textContent = currentLang === 'de' ? 'Sprache: DE → EN' : 'Language: EN → DE';
+}
+updateMoreLangLabel();
+
+function openMoreMenu(){
+  moreMenu.classList.add('show');
+  moreMenuBackdrop.classList.add('show');
+}
+function closeMoreMenu(){
+  moreMenu.classList.remove('show');
+  moreMenuBackdrop.classList.remove('show');
+}
+
+document.getElementById('btnMoreMenu').onclick = (e) => {
+  e.stopPropagation();
+  if(moreMenu.classList.contains('show')) closeMoreMenu(); else openMoreMenu();
+};
+moreMenuBackdrop.onclick = closeMoreMenu;
+document.addEventListener('click', (e) => {
+  if(!document.getElementById('moreMenuWrap').contains(e.target)) closeMoreMenu();
+});
+
+document.getElementById('moreLangToggle').onclick = () => {
+  setLang(currentLang === 'de' ? 'en' : 'de');
+  updateMoreLangLabel();
+  closeMoreMenu();
+};
+document.getElementById('moreSave').onclick = () => { closeMoreMenu(); saveToFile(); };
+document.getElementById('moreChangePassword').onclick = () => {
+  closeMoreMenu();
+  if(!state.key) return;
+  openChangePasswordDialog();
+};
+document.getElementById('moreHistory').onclick = () => { closeMoreMenu(); openHistoryDialog(); };
+document.getElementById('moreAbout').onclick = () => { closeMoreMenu(); openAboutDialog(); };
+document.getElementById('moreAutoLock').onclick = () => { closeMoreMenu(); openAutoLockDialog(); };
+document.getElementById('moreLock').onclick = () => { closeMoreMenu(); requestLock(); };
+</script>
+
+
+</body></html>

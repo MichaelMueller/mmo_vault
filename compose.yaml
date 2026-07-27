@@ -1,0 +1,57 @@
+# MMO Vault — Auslieferung als statischer Container.
+#
+#   docker compose up -d --build     → http://127.0.0.1:4080/
+#
+# Der Dienst ist als Backend hinter einem Reverse Proxy gedacht, der TLS
+# terminiert. Ohne HTTPS ist die Anwendung nur über localhost benutzbar:
+# crypto.subtle existiert außerhalb eines Secure Context nicht, die Oberfläche
+# weist darauf hin und sperrt sich selbst.
+#
+# Abweichender Port oder Bind-Adresse ohne Änderung dieser Datei:
+#   VAULT_PORT=4080 VAULT_BIND=127.0.0.1 docker compose up -d
+# oder dauerhaft in einer .env-Datei daneben.
+
+services:
+  mmo-vault:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mmo-vault:1.1.0
+    container_name: mmo-vault
+    # Startet nach einem Reboot automatisch wieder — vorausgesetzt, der
+    # Docker-Dienst selbst ist aktiviert (systemctl enable docker).
+    # "unless-stopped" statt "always": ein bewusst gestoppter Container bleibt
+    # nach dem Neustart gestoppt.
+    restart: unless-stopped
+
+    # Die Bind-Adresse 127.0.0.1 ist hier die eigentliche Zugriffsbeschränkung.
+    # WICHTIG: Ohne sie — also bei "4080:8080" — trägt Docker eigene
+    # iptables-Regeln VOR die Ketten von ufw/firewalld ein. Der Port wäre dann
+    # aus dem Netz erreichbar, obwohl die Firewall ihn scheinbar sperrt.
+    # Läuft der Reverse Proxy in einem eigenen Container, kann er die
+    # Host-Loopback-Adresse nicht erreichen: dann diese Freigabe ganz entfernen,
+    # das Proxy-Netz unten einkommentieren und dort auf http://mmo-vault:8080
+    # zeigen — ohne jede Portveröffentlichung.
+    ports:
+      - "${VAULT_BIND:-127.0.0.1}:${VAULT_PORT:-4080}:8080"
+
+    # networks:
+    #   - proxy
+
+    # Härtung: Der Container liefert eine unveränderliche Datei aus und braucht
+    # dafür weder Schreibrechte im Wurzeldateisystem noch Capabilities.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    # Statischer Dateiserver für ein Dokument — mehr braucht es nicht.
+    mem_limit: 64m
+    pids_limit: 64
+
+# networks:
+#   proxy:
+#     external: true

@@ -1,7 +1,7 @@
 # MMO Vault — Anforderungsspezifikation
 
-**Version:** 1.1.3
-**Stand:** 2026-07-27
+**Version:** 1.2.0
+**Stand:** 2026-07-28
 **Status:** Freigegeben. Kapitel 9 hält fest, was automatisiert verifiziert ist und welche vier Punkte manuell offen bleiben.
 **Autor:** Michael Müller
 
@@ -11,7 +11,7 @@
 
 MMO Vault ist ein lokaler Passwortmanager, der vollständig als **eine einzelne HTML-Datei** ausgeliefert wird und ausschließlich im Browser des Anwenders läuft. Er verwaltet Zugangsdaten, Freitext-Notizen, 2FA-Secrets und Dateianhänge in einer verschlüsselten Datei, die der Anwender selbst besitzt und ablegt.
 
-Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.1.3. Es richtet sich an Entwicklung, Review und Abnahme.
+Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.2.0. Es richtet sich an Entwicklung, Review und Abnahme.
 
 ### 1.1 Nicht im Geltungsbereich
 

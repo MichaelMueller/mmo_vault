@@ -4,8 +4,8 @@
 # Build-Schritt. Es gibt daher nichts zu kompilieren und keine Build-Stage —
 # das Image besteht aus nginx plus dem Auslieferverzeichnis.
 #
-# Bauen:    docker build -t mmo-vault:1.1.3 .
-# Starten:  docker run --rm -p 127.0.0.1:4080:8080 mmo-vault:1.1.3
+# Bauen:    docker build -t mmo-vault:1.2.0 .
+# Starten:  docker run --rm -p 127.0.0.1:4080:8080 mmo-vault:1.2.0
 # Aufrufen: http://127.0.0.1:4080/
 #
 # WICHTIG: Über eine andere Adresse als localhost MUSS TLS davor stehen.
@@ -17,7 +17,7 @@ FROM nginx:1.27-alpine
 
 LABEL org.opencontainers.image.title="MMO Vault" \
       org.opencontainers.image.description="Lokaler Passwortmanager als einzelne HTML-Datei" \
-      org.opencontainers.image.version="1.1.3" \
+      org.opencontainers.image.version="1.2.0" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 # Ersetzt die Hauptkonfiguration komplett. Der Default-Server des Images erwartet

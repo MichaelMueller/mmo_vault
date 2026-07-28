@@ -52,7 +52,13 @@ body{
   min-height:100dvh;
   display:flex;
   flex-direction:column;
-  overflow-x:hidden;
+  /* Bewusst KEIN overflow-x:hidden. Das kaschiert zu breite Inhalte, anstatt
+     sie zu verhindern, und zieht zwei Folgefehler nach sich: es macht den Body
+     zum Scroll-Container, wodurch position:sticky der Topbar nicht mehr greift,
+     und ein zu breites Layout verschiebt den fixierten Aktionsknopf nach rechts
+     aus dem Bild, ohne dass man dorthin scrollen könnte. Stattdessen sorgen
+     min-width:0 an den Flex-Kindern und overflow-wrap dafür, dass nichts
+     überbreit wird. */
 }
 button{font-family:inherit;}
 :focus-visible{outline:2px solid var(--primary); outline-offset:2px;}
@@ -228,7 +234,7 @@ h1.brand{
 .lock-secondary-row .btn-remove{
   flex:0 0 auto; width:44px; padding:0; font-size:16px; line-height:1;
 }
-.remembered-file-label{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block;}
+.remembered-file-label{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; min-width:0;}
 
 .history-item{
   display:flex; flex-direction:column; gap:2px;
@@ -269,7 +275,7 @@ h1.brand{
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;
 }
 .current-file-label:empty{display:none;}
-.search-wrap{flex:1; position:relative; max-width:420px;}
+.search-wrap{flex:1; min-width:0; position:relative; max-width:420px;}
 .search-wrap input{
   width:100%; background: var(--surface-container-high);
   border:1px solid var(--outline); border-radius: 24px;
@@ -294,7 +300,9 @@ h1.brand{
 .empty-state svg{width:56px; height:56px; fill:var(--outline); margin-bottom:16px;}
 .empty-state h3{font-family:var(--font-display); color:var(--on-surface); font-weight:700; letter-spacing:1px; text-transform:uppercase; font-size:15px;}
 
-.entry-grid{display:grid; grid-template-columns: repeat(auto-fill, minmax(360px,1fr)); gap:16px;}
+/* min(100%, 360px) statt 360px: sonst bleibt die Spalte auch dann 360px breit,
+   wenn der Inhaltsbereich schmaler ist, und ragt aus dem Bildschirm. */
+.entry-grid{display:grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px),1fr)); gap:16px;}
 
 .type-filter-row{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px;}
 .chip{
@@ -349,7 +357,7 @@ h1.brand{
   background:var(--surface-container-high); border-radius:var(--radius-s);
   padding:8px 8px 8px 12px; margin-bottom:6px; font-size:13px;
 }
-.attachment-item .att-name{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;}
+.attachment-item .att-name{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0;}
 .attachment-item .att-size{color:var(--on-surface-variant); font-size:11.5px; flex-shrink:0;}
 .attachment-item .att-actions{display:flex; gap:2px; flex-shrink:0;}
 
@@ -359,7 +367,11 @@ h1.brand{
   background:var(--surface-container-high); border-radius:var(--radius-s);
   padding:8px 8px 8px 12px; margin-top:6px; font-size:12.5px;
 }
-.attachment-inline-item .att-name{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;}
+.attachment-inline-item .att-name{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0;}
+
+/* Notizen und Freitext-Inhalte können lange, umbruchlose Zeichenketten
+   enthalten (Lizenzschlüssel, Tokens) — die dürfen die Karte nicht aufweiten. */
+.notes-slot{overflow-wrap:anywhere;}
 
 .entry-tags{display:flex; flex-wrap:wrap; gap:5px; margin-top:10px;}
 .entry-tags .tag-pill{
@@ -386,6 +398,12 @@ h1.brand{
   border-radius: var(--radius-m);
   padding: 16px 16px 14px;
   position:relative;
+  /* Auch Grid-Kinder haben voreingestellt min-width:auto und werden dadurch
+     nie kleiner als ihre min-content-Breite. Die ist hier groß, weil die
+     Wertzeilen white-space:nowrap tragen — eine lange URL machte die Karte
+     dadurch breiter als den Bildschirm. Erst mit dieser Zeile darf die Karte
+     schrumpfen, und erst dann greift das Kürzen mit Auslassungspunkten. */
+  min-width:0;
   transition: border-color .15s, transform .1s;
 }
 .entry-card:hover{border-color: var(--outline);}
@@ -399,8 +417,9 @@ h1.brand{
   opacity:.6;
 }
 .entry-head{display:flex; align-items:flex-start; justify-content:space-between; gap:8px;}
-.entry-title{font-weight:600; font-size:15.5px; margin:0 0 2px; word-break:break-word;}
-.entry-user{font-size:12.5px; color:var(--on-surface-variant); word-break:break-word;}
+.entry-head > div:first-child{min-width:0;}
+.entry-title{font-weight:600; font-size:15.5px; margin:0 0 2px; word-break:break-word; overflow-wrap:anywhere;}
+.entry-user{font-size:12.5px; color:var(--on-surface-variant); word-break:break-word; overflow-wrap:anywhere;}
 .entry-menu-btn{flex-shrink:0;}
 
 .entry-row{
@@ -411,6 +430,12 @@ h1.brand{
 .entry-row .val{
   font-family: var(--font-mono); font-size:13.5px; letter-spacing:.3px;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;
+  /* min-width:0 ist hier zwingend. Flex-Kinder haben voreingestellt
+     min-width:auto und schrumpfen deshalb nicht unter ihre Inhaltsbreite —
+     bei white-space:nowrap ist das die volle Textbreite. Ohne diese Zeile
+     greift text-overflow:ellipsis nie, und eine lange URL macht die Zeile und
+     damit die ganze Karte breiter als den Bildschirm. */
+  min-width:0;
   color:var(--on-surface);
 }
 .entry-row.masked .val{letter-spacing:2px;}
@@ -427,7 +452,7 @@ h1.brand{
 .totp-dial svg{width:100%; height:100%; transform:rotate(-90deg);}
 .totp-dial .track{fill:none; stroke: rgba(255,255,255,.12); stroke-width:3;}
 .totp-dial .prog{fill:none; stroke: var(--on-secondary-container); stroke-width:3; stroke-linecap:round; transition: stroke-dashoffset 1s linear;}
-.totp-code{font-family:var(--font-mono); font-size:19px; font-weight:600; letter-spacing:2px; color:var(--on-secondary-container); flex:1;}
+.totp-code{font-family:var(--font-mono); font-size:19px; font-weight:600; letter-spacing:2px; color:var(--on-secondary-container); flex:1; min-width:0;}
 .totp-copy{color:var(--on-secondary-container);}
 
 .fab{
@@ -540,9 +565,15 @@ h1.brand{
 }
 @media (max-width: 560px){
   .content{padding:14px; padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));}
-  .entry-grid{grid-template-columns:1fr;}
+  /* minmax(0,1fr) statt 1fr: "1fr" bedeutet minmax(auto,1fr), und das auto
+     lässt die Spalte auf die min-content-Breite der Karte anwachsen. */
+  .entry-grid{grid-template-columns: minmax(0, 1fr);}
   .topbar h2{display:none;}
-  .current-file-label{max-width:110px;}
+  .topbar{padding:10px 12px; gap:8px;}
+  /* Der Dateiname darf dem Suchfeld nicht die Breite nehmen — auf 360px blieben
+     davon sonst nur wenige Zeichen übrig. */
+  .current-file-label{max-width:88px;}
+  .search-wrap input{padding-left:34px;}
 }
 
 /* Schmale Telefone — Sony Xperia & Co. liegen bei 360 CSS-Pixeln. Weniger
@@ -841,7 +872,7 @@ h1.brand{
       </div>
       <div>
         <h3 id="aboutTitle" style="margin:0;">MMO Vault</h3>
-        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.1.1 · lokaler Passwortmanager</p>
+        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.1.2 · lokaler Passwortmanager</p>
       </div>
     </div>
 
@@ -963,7 +994,7 @@ const I18N = {
     change_btn: 'Ändern',
     history_h: 'Änderungsverlauf',
     close: 'Schließen',
-    about_version: 'Version 1.1.1 · lokaler Passwortmanager',
+    about_version: 'Version 1.1.2 · lokaler Passwortmanager',
     about_p1: 'Entwickelt von <strong>Michael Müller</strong>. Teil der <strong>MMO</strong>-Toolreihe für Eigenprojekte.',
     about_p2: 'Läuft vollständig lokal im Browser als einzelne HTML-Datei — keine externen Server, keine CDN-Abhängigkeiten, keine Telemetrie, per Content-Security-Policy erzwungen. Verschlüsselung per AES-256-GCM (PBKDF2-SHA256, 600.000 Iterationen), TOTP-2FA nach RFC 6238, QR-Code-Import über die native BarcodeDetector-API.',
     about_p3: 'Keine Garantie, keine Gewährleistung — nutz es auf eigene Verantwortung, wie jedes selbstgebaute Werkzeug. Regelmäßige Backups der Vault-Datei sind Pflicht, nicht optional.',
@@ -1116,7 +1147,7 @@ const I18N = {
     change_btn: 'Change',
     history_h: 'Change history',
     close: 'Close',
-    about_version: 'Version 1.1.1 · local password manager',
+    about_version: 'Version 1.1.2 · local password manager',
     about_p1: 'Developed by <strong>Michael Müller</strong>. Part of the <strong>MMO</strong> tool series for personal projects.',
     about_p2: 'Runs entirely locally in the browser as a single HTML file — no external servers, no CDN dependencies, no telemetry, enforced by a Content Security Policy. Encryption via AES-256-GCM (PBKDF2-SHA256, 600,000 iterations), TOTP 2FA per RFC 6238, QR code import via the native BarcodeDetector API.',
     about_p3: 'No warranty, no guarantee — use at your own risk, like any self-built tool. Regular backups of the vault file are mandatory, not optional.',

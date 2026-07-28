@@ -1,6 +1,6 @@
 # MMO Vault — Anforderungsspezifikation
 
-**Version:** 1.1.1
+**Version:** 1.1.2
 **Stand:** 2026-07-27
 **Status:** Freigegeben. Kapitel 9 hält fest, was automatisiert verifiziert ist und welche vier Punkte manuell offen bleiben.
 **Autor:** Michael Müller
@@ -11,7 +11,7 @@
 
 MMO Vault ist ein lokaler Passwortmanager, der vollständig als **eine einzelne HTML-Datei** ausgeliefert wird und ausschließlich im Browser des Anwenders läuft. Er verwaltet Zugangsdaten, Freitext-Notizen, 2FA-Secrets und Dateianhänge in einer verschlüsselten Datei, die der Anwender selbst besitzt und ablegt.
 
-Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.1.1. Es richtet sich an Entwicklung, Review und Abnahme.
+Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.1.2. Es richtet sich an Entwicklung, Review und Abnahme.
 
 ### 1.1 Nicht im Geltungsbereich
 
@@ -336,6 +336,10 @@ Abgehakte Punkte sind nachweisbar geprüft — die Krypto-, Datenintegritäts-, 
 - [x] Sprachwechsel erfasst auch dynamisch erzeugte Inhalte (Typ-Chips, Leerzustände, Fehlermeldungen, `aria-label`) und erhält den aktiven Filter
 - [x] Jedes sichtbare Eingabefeld besitzt ein zugeordnetes Label oder `aria-label`
 - [x] Layout bei 320, 360, 411, 500, 900 und 1280 px: kein horizontaler Überlauf, keine mehrzeilig umbrechenden Schaltflächen, Dialoge schmaler als der Viewport
+- [x] Layoutprüfung MUSS mit realistisch langen Werten erfolgen — vollständige URL, lange E-Mail-Adresse, langer Anhangsname, umbruchlose Zeichenkette im Freitext. Kurze Platzhalter verdecken Überlauf-Fehler, weil sie ohnehin passen.
+- [x] Überbreite Inhalte werden gekürzt, nicht kaschiert: `document.scrollWidth` entspricht der Viewport-Breite, kein Element ragt über den rechten Rand, Wertzeilen kürzen mit Auslassungspunkten
+- [x] Der Aktionsknopf zum Anlegen bleibt bei jeder Breite im Bild und anklickbar
+- [x] Die Kopfleiste bleibt beim Scrollen oben stehen (`position:sticky` wirksam)
 - [x] Unter 900 px erscheint das Werkzeugmenü als Bottom-Sheet am unteren Rand, vollständig im Bild, mit bildschirmfüllendem Backdrop; alle sieben Einträge sind per `elementFromPoint` nachweisbar erreichbar und lösen ihre Aktion aus
 - [x] Ab 901 px entfällt das Sheet und die Werkzeuge liegen direkt in der Kopfleiste
 - [ ] Sichtprüfung der übersetzten Texte auf Umbrüche und Überläufe in allen Ansichten

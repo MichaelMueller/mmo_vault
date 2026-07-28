@@ -1,6 +1,6 @@
 # MMO Vault — Anforderungsspezifikation
 
-**Version:** 1.4.0
+**Version:** 1.5.0
 **Stand:** 2026-07-28
 **Status:** Im Eigenbetrieb freigegeben. Alle automatisiert prüfbaren Kriterien aus Kapitel 9 sind verifiziert; die verbleibenden erfordern manuelle Durchführung und stehen dort als unmarkierte Kästchen. Diese Zahl wird hier bewusst nicht wiederholt, damit sie nicht veraltet.
 **Autor:** Michael Müller
@@ -11,7 +11,7 @@
 
 MMO Vault ist ein lokaler Passwortmanager, der vollständig als **eine einzelne HTML-Datei** ausgeliefert wird und ausschließlich im Browser des Anwenders läuft. Er verwaltet Zugangsdaten, Freitext-Notizen, 2FA-Secrets und Dateianhänge in einer verschlüsselten Datei, die der Anwender selbst besitzt und ablegt.
 
-Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.4.0. Es richtet sich an Entwicklung, Review und Abnahme.
+Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.5.0. Es richtet sich an Entwicklung, Review und Abnahme.
 
 ### 1.1 Nicht im Geltungsbereich
 
@@ -227,7 +227,11 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 |---|---|
 | FUN-53 | Der Inhalt von Freitext-Einträgen MUSS als Markdown dargestellt werden. Notizen an Zugangsdaten bleiben reiner Text. Gesucht und bearbeitet wird immer der Rohtext. |
 | FUN-54 | Der Renderer MUSS ausschließlich DOM-Knoten über `createElement` und `textContent` erzeugen und DARF `innerHTML` nicht verwenden. Damit ist HTML-Injection konstruktionsbedingt ausgeschlossen und SEC-23 bleibt gewahrt — ein Sanitizer wäre eine schwächere Zusicherung. |
-| FUN-55 | Unterstützt werden MÜSSEN: Überschriften, fett, kursiv, durchgestrichen, Inline-Code, Code-Blöcke, Listen (geordnet und ungeordnet), Zitat, Trennlinie, Links. |
+| FUN-55 | Unterstützt werden MÜSSEN: Überschriften, fett, kursiv, durchgestrichen, Inline-Code, Code-Blöcke, Listen (geordnet und ungeordnet, **mehrstufig über die Einzugstiefe**), Zitat, Trennlinie, Links und **Tabellen**. |
+| FUN-55a | Eine Tabelle MUSS an einer Trennzeile (`\|---\|`) erkannt werden. Ohne Trennzeile bleibt der Text ein Absatz — sonst würde jede Zeile mit einem senkrechten Strich zur Tabelle. |
+| FUN-55b | Die Spaltenausrichtung aus `:---`, `:---:`, `---:` MUSS umgesetzt werden. |
+| FUN-55c | Zeilen MÜSSEN auf die Spaltenzahl der Kopfzeile normiert werden: fehlende Zellen bleiben leer, überzählige entfallen. Ein mit Backslash geschütztes `\|` trennt nicht. |
+| FUN-55d | Eine Tabelle MUSS in einem eigenen horizontal scrollbaren Container liegen. Bei rund 330 px Kartenbreite passt eine mehrspaltige Tabelle nicht und würde die Kachel sonst aufweiten. |
 | FUN-56 | Bilder DÜRFEN NICHT gerendert werden. Ein `<img>` mit externer Quelle wäre ein Netzwerk-Beacon und würde die Zusage aus SEC-20 bis SEC-22 brechen. Der Tag DARF nicht entstehen, unabhängig davon, dass die CSP ihn zusätzlich blockt. |
 | FUN-57 | Eingebettetes HTML im Markdown MUSS als Text ausgegeben werden. |
 | FUN-58 | Links MÜSSEN dieselbe Allowlist wie Eintrags-URLs durchlaufen (nur `http`/`https`) und mit `noopener noreferrer` öffnen. Abgewiesene Ziele MÜSSEN als Text erhalten bleiben. |
@@ -378,6 +382,11 @@ Abgehakte Punkte sind nachweisbar geprüft — die Krypto-, Datenintegritäts-, 
 - [x] Einzelne Zeilenumbrüche bleiben als `<br>` erhalten (Backup-Code-Fall)
 - [x] Notizen an Zugangsdaten bleiben reiner Text — `**text**` wird nicht formatiert
 - [x] Vorschau nur bei Freitext, rendert den Rohtext und wird beim Zurückschalten und beim Sperren geleert
+- [x] Tabelle: Kopfzeile, Ausrichtung links/zentriert/rechts wirksam (per `getComputedStyle` geprüft), fehlende Zelle leer, überzählige verworfen, geschütztes `\|` bleibt Inhalt, Absatz danach wird wieder als Absatz erkannt
+- [x] Ohne Trennzeile entsteht keine Tabelle, der Text bleibt Absatz
+- [x] Tabelle liegt im Scroll-Container; die Karte bleibt bei 360 px im Viewport, kein horizontaler Seiten-Überlauf
+- [x] Verschachtelte Listen bis drei Ebenen, gemischt geordnet und ungeordnet
+- [x] Injection in Tabellenzellen: kein `<img>`, keine `on*`-Attribute, rohes HTML bleibt Text, `javascript:`-Link wird nicht verlinkt
 - [x] `javascript:`-URLs werden abgewiesen, schemalose Eingaben zu `https://` ergänzt
 - [x] Suche ohne Treffer zeigt „Keine Treffer" statt einer leeren Seite
 - [x] Escape schließt den obersten Dialog; Hintergrundklick schließt nur Dialoge ohne Eingabefelder

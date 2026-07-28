@@ -417,6 +417,21 @@ h1.brand{
 .md-hr{border:none; border-top:1px solid var(--outline-variant); margin:10px 0;}
 .md-link{color:var(--primary); text-decoration:underline;}
 .md-body strong{color:var(--on-surface);}
+.md-sublist{margin:2px 0 0;}
+
+/* Tabelle scrollt in ihrem eigenen Container, statt die Karte zu verbreitern. */
+.md-table-wrap{overflow-x:auto; margin:0 0 8px;}
+.md-table{border-collapse:collapse; font-size:12px; min-width:100%;}
+.md-table th, .md-table td{
+  border:1px solid var(--outline-variant); padding:5px 9px;
+  text-align:left; white-space:nowrap;
+}
+.md-table th{background:var(--surface-container-highest); color:var(--on-surface); font-weight:600;}
+/* Mit Element im Selektor: ".md-al-r" allein waere unspezifischer als
+   ".md-table th" und die Spaltenausrichtung bliebe wirkungslos. */
+.md-table th.md-al-l, .md-table td.md-al-l{text-align:left;}
+.md-table th.md-al-c, .md-table td.md-al-c{text-align:center;}
+.md-table th.md-al-r, .md-table td.md-al-r{text-align:right;}
 
 /* Lange Notizen wuerden die Kachel sprengen — daher begrenzen und aufklappbar
    machen. Die Begrenzung ist rein visuell, der Inhalt steht vollstaendig im DOM. */
@@ -1023,7 +1038,7 @@ h1.brand{
       </div>
       <div>
         <h3 id="aboutTitle" style="margin:0;">MMO Vault</h3>
-        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.4.0 · lokaler Passwortmanager</p>
+        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.5.0 · lokaler Passwortmanager</p>
       </div>
     </div>
 
@@ -1155,7 +1170,7 @@ const I18N = {
     change_btn: 'Ändern',
     history_h: 'Änderungsverlauf',
     close: 'Schließen',
-    about_version: 'Version 1.4.0 · lokaler Passwortmanager',
+    about_version: 'Version 1.5.0 · lokaler Passwortmanager',
     about_p1: 'Entwickelt von <strong>Michael Müller</strong>. Teil der <strong>MMO</strong>-Toolreihe für Eigenprojekte.',
     about_p2: 'Läuft vollständig lokal im Browser als einzelne HTML-Datei — keine externen Server, keine CDN-Abhängigkeiten, keine Telemetrie, per Content-Security-Policy erzwungen. Verschlüsselung per AES-256-GCM (PBKDF2-SHA256, 600.000 Iterationen), TOTP-2FA nach RFC 6238, QR-Code-Import über die native BarcodeDetector-API.',
     about_p3: 'Keine Garantie, keine Gewährleistung — nutz es auf eigene Verantwortung, wie jedes selbstgebaute Werkzeug. Regelmäßige Backups der Vault-Datei sind Pflicht, nicht optional.',
@@ -1321,7 +1336,7 @@ const I18N = {
     change_btn: 'Change',
     history_h: 'Change history',
     close: 'Close',
-    about_version: 'Version 1.4.0 · local password manager',
+    about_version: 'Version 1.5.0 · local password manager',
     about_p1: 'Developed by <strong>Michael Müller</strong>. Part of the <strong>MMO</strong> tool series for personal projects.',
     about_p2: 'Runs entirely locally in the browser as a single HTML file — no external servers, no CDN dependencies, no telemetry, enforced by a Content Security Policy. Encryption via AES-256-GCM (PBKDF2-SHA256, 600,000 iterations), TOTP 2FA per RFC 6238, QR code import via the native BarcodeDetector API.',
     about_p3: 'No warranty, no guarantee — use at your own risk, like any self-built tool. Regular backups of the vault file are mandatory, not optional.',
@@ -1808,6 +1823,81 @@ function mdInlineIn(ziel, text){
   return ziel;
 }
 
+/* Trennzeile einer Tabelle: |---|:--:|---:| in beliebiger Schreibweise. */
+const MD_TABLE_SEP = /^\s*\|?(\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$/;
+
+/* Zerlegt eine Tabellenzeile in Zellen. Ein mit Backslash geschuetztes \| trennt
+   nicht, sondern gehoert zum Zellinhalt. Bewusst als Zeichenlauf und nicht ueber
+   einen Platzhalter: jedes Ersatzzeichen koennte selbst im Text vorkommen, und ein
+   Steuerzeichen im Quelltext macht die Datei fuer Werkzeuge zur Binaerdatei. */
+function mdZellen(zeile){
+  const z = zeile.trim().replace(/^\|/, '').replace(/\|$/, '');
+  const zellen = [];
+  let aktuell = '';
+  for(let k = 0; k < z.length; k++){
+    if(z[k] === '\\' && z[k + 1] === '|'){ aktuell += '|'; k++; continue; }
+    if(z[k] === '|'){ zellen.push(aktuell.trim()); aktuell = ''; continue; }
+    aktuell += z[k];
+  }
+  zellen.push(aktuell.trim());
+  return zellen;
+}
+
+function mdBaueTabelle(kopf, ausrichtung, koerper){
+  // Eigener Scroll-Container: eine mehrspaltige Tabelle passt bei rund 330px
+  // Kartenbreite nicht und wuerde die Kachel sonst aufweiten. Gleiche Loesung
+  // wie bei Code-Bloecken.
+  const huelle = document.createElement('div');
+  huelle.className = 'md-table-wrap';
+  const tabelle = document.createElement('table');
+  tabelle.className = 'md-table';
+
+  const kopfZeile = tabelle.appendChild(document.createElement('thead'))
+                           .appendChild(document.createElement('tr'));
+  kopf.forEach((zelle, idx) => {
+    const th = kopfZeile.appendChild(document.createElement('th'));
+    if(ausrichtung[idx]) th.className = 'md-al-' + ausrichtung[idx];
+    mdInlineIn(th, zelle);
+  });
+
+  const tbody = tabelle.appendChild(document.createElement('tbody'));
+  koerper.forEach(reihe => {
+    const tr = tbody.appendChild(document.createElement('tr'));
+    // Auf die Spaltenzahl der Kopfzeile normieren: fehlende Zellen bleiben leer,
+    // ueberzaehlige entfallen. Sonst zerfaellt das Raster bei krummen Zeilen.
+    for(let idx = 0; idx < kopf.length; idx++){
+      const td = tr.appendChild(document.createElement('td'));
+      if(ausrichtung[idx]) td.className = 'md-al-' + ausrichtung[idx];
+      mdInlineIn(td, reihe[idx] || '');
+    }
+  });
+
+  huelle.appendChild(tabelle);
+  return huelle;
+}
+
+/* Baut aus flachen Listenpunkten mit Einzugstiefe einen verschachtelten Baum.
+   Tiefere Einzuege haengen als Unterliste am jeweils letzten Punkt, flachere
+   schliessen Ebenen wieder. */
+function mdBaueListe(punkte){
+  const wurzel = document.createElement(punkte[0].nummeriert ? 'ol' : 'ul');
+  wurzel.className = 'md-list';
+  const stapel = [{ einzug: punkte[0].einzug, liste: wurzel }];
+  punkte.forEach(punkt => {
+    while(stapel.length > 1 && punkt.einzug < stapel[stapel.length - 1].einzug) stapel.pop();
+    let oben = stapel[stapel.length - 1];
+    if(punkt.einzug > oben.einzug + 1 && oben.liste.lastElementChild){
+      const unter = document.createElement(punkt.nummeriert ? 'ol' : 'ul');
+      unter.className = 'md-list md-sublist';
+      oben.liste.lastElementChild.appendChild(unter);
+      stapel.push({ einzug: punkt.einzug, liste: unter });
+      oben = stapel[stapel.length - 1];
+    }
+    mdInlineIn(oben.liste.appendChild(document.createElement('li')), punkt.text);
+  });
+  return wurzel;
+}
+
 /* Blockweises Parsen, zeilenorientiert. */
 function renderMarkdownInto(ziel, quelle){
   ziel.textContent = '';
@@ -1859,6 +1949,24 @@ function renderMarkdownInto(ziel, quelle){
       continue;
     }
 
+    // Tabelle: Kopfzeile plus Trennzeile. Die Trennzeile ist Pflicht — sonst
+    // wuerde jede Zeile, die irgendwo eine Pipe enthaelt, zur Tabelle.
+    if(zeile.includes('|') && i + 1 < zeilen.length && MD_TABLE_SEP.test(zeilen[i + 1])){
+      const kopf = mdZellen(zeile);
+      const ausrichtung = mdZellen(zeilen[i + 1]).map(sp => {
+        const links = sp.startsWith(':'), rechts = sp.endsWith(':');
+        return links && rechts ? 'c' : rechts ? 'r' : links ? 'l' : '';
+      });
+      i += 2;
+      const koerper = [];
+      while(i < zeilen.length && zeilen[i].trim() && zeilen[i].includes('|')){
+        koerper.push(mdZellen(zeilen[i]));
+        i++;
+      }
+      ziel.appendChild(mdBaueTabelle(kopf, ausrichtung, koerper));
+      continue;
+    }
+
     // Zitat: aufeinanderfolgende > Zeilen
     if(/^\s*>\s?/.test(zeile)){
       const inhalt = [];
@@ -1876,17 +1984,20 @@ function renderMarkdownInto(ziel, quelle){
       continue;
     }
 
-    // Listen, eine Ebene
+    // Listen, mehrstufig ueber die Einzugstiefe
     if(istListe(zeile) || istNummeriert(zeile)){
-      const nummeriert = istNummeriert(zeile);
-      const liste = document.createElement(nummeriert ? 'ol' : 'ul');
-      liste.className = 'md-list';
-      while(i < zeilen.length && (nummeriert ? istNummeriert(zeilen[i]) : istListe(zeilen[i]))){
-        const text = zeilen[i].replace(nummeriert ? /^\s*\d+[.)]\s+/ : /^\s*[-*+]\s+/, '');
-        mdInlineIn(liste.appendChild(document.createElement('li')), text);
+      const punkte = [];
+      while(i < zeilen.length && (istListe(zeilen[i]) || istNummeriert(zeilen[i]))){
+        const roh = zeilen[i].replace(/	/g, '    ');
+        const nummeriert = istNummeriert(roh);
+        punkte.push({
+          einzug: roh.match(/^ */)[0].length,
+          nummeriert,
+          text: roh.replace(nummeriert ? /^\s*\d+[.)]\s+/ : /^\s*[-*+]\s+/, '')
+        });
         i++;
       }
-      ziel.appendChild(liste);
+      ziel.appendChild(mdBaueListe(punkte));
       continue;
     }
 

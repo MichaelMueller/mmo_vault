@@ -1,6 +1,6 @@
 # MMO Vault — Anforderungsspezifikation
 
-**Version:** 1.1.2
+**Version:** 1.1.3
 **Stand:** 2026-07-27
 **Status:** Freigegeben. Kapitel 9 hält fest, was automatisiert verifiziert ist und welche vier Punkte manuell offen bleiben.
 **Autor:** Michael Müller
@@ -11,7 +11,7 @@
 
 MMO Vault ist ein lokaler Passwortmanager, der vollständig als **eine einzelne HTML-Datei** ausgeliefert wird und ausschließlich im Browser des Anwenders läuft. Er verwaltet Zugangsdaten, Freitext-Notizen, 2FA-Secrets und Dateianhänge in einer verschlüsselten Datei, die der Anwender selbst besitzt und ablegt.
 
-Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.1.2. Es richtet sich an Entwicklung, Review und Abnahme.
+Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.1.3. Es richtet sich an Entwicklung, Review und Abnahme.
 
 ### 1.1 Nicht im Geltungsbereich
 
@@ -202,6 +202,10 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 | FUN-46 | Modale Dialoge MÜSSEN per **Escape** schließbar sein. Dialoge ohne Eingabefelder MÜSSEN zusätzlich per Klick auf den Hintergrund schließbar sein. |
 | FUN-47 | Jedes Eingabefeld MUSS ein zugeordnetes Label oder ein `aria-label` besitzen; Dialoge MÜSSEN `role="dialog"` und `aria-modal` tragen. |
 | FUN-48 | `prefers-reduced-motion` MUSS respektiert werden. |
+| FUN-49 | Auf Touch-Geräten (unter 560 px) MÜSSEN alle Bedienelemente mindestens 36 px in der kleineren Kante messen, Kopfleisten- und Dialogschaltflächen mindestens 44 px. Ein natives Kontrollelement DARF kleiner sein, wenn eine umgebende Beschriftung die Trefferfläche auf dieses Maß bringt. |
+| FUN-50 | Unter 560 px MUSS die Suche eine eigene Zeile über die volle Breite erhalten. Nebeneinander mit Dateiname und Menü bleibt zu wenig Platz für eine brauchbare Eingabe. |
+| FUN-51 | Eingabefelder MÜSSEN auf Touch-Geräten mindestens 16 px Schriftgröße haben, damit iOS beim Fokussieren nicht in die Seite zoomt. |
+| FUN-52 | Die Kopfleiste MUSS links eine Bildmarke tragen, die auch dann sichtbar bleibt, wenn der Schriftzug auf schmalen Bildschirmen entfällt. |
 
 ---
 
@@ -340,6 +344,9 @@ Abgehakte Punkte sind nachweisbar geprüft — die Krypto-, Datenintegritäts-, 
 - [x] Überbreite Inhalte werden gekürzt, nicht kaschiert: `document.scrollWidth` entspricht der Viewport-Breite, kein Element ragt über den rechten Rand, Wertzeilen kürzen mit Auslassungspunkten
 - [x] Der Aktionsknopf zum Anlegen bleibt bei jeder Breite im Bild und anklickbar
 - [x] Die Kopfleiste bleibt beim Scrollen oben stehen (`position:sticky` wirksam)
+- [x] Bei 360 px messen alle Bedienelemente mindestens 36 px, Kopfleisten- und Dialogschaltflächen 44 px; das Kästchen „Sonderzeichen" ist über seine 44 px hohe Beschriftungszeile schaltbar
+- [x] Unter 560 px liegt die Suche in eigener Zeile über die volle Breite (336 px bei 360 px Viewport, 44 px hoch, 16 px Schrift)
+- [x] Die Bildmarke ist bei jeder Breite sichtbar; der Schriftzug entfällt nur unter 560 px
 - [x] Unter 900 px erscheint das Werkzeugmenü als Bottom-Sheet am unteren Rand, vollständig im Bild, mit bildschirmfüllendem Backdrop; alle sieben Einträge sind per `elementFromPoint` nachweisbar erreichbar und lösen ihre Aktion aus
 - [x] Ab 901 px entfällt das Sheet und die Werkzeuge liegen direkt in der Kopfleiste
 - [ ] Sichtprüfung der übersetzten Texte auf Umbrüche und Überläufe in allen Ansichten

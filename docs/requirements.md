@@ -1,6 +1,6 @@
 # MMO Vault — Anforderungsspezifikation
 
-**Version:** 1.3.0
+**Version:** 1.3.1
 **Stand:** 2026-07-28
 **Status:** Im Eigenbetrieb freigegeben. Alle automatisiert prüfbaren Kriterien aus Kapitel 9 sind verifiziert; die verbleibenden erfordern manuelle Durchführung und stehen dort als unmarkierte Kästchen. Diese Zahl wird hier bewusst nicht wiederholt, damit sie nicht veraltet.
 **Autor:** Michael Müller
@@ -11,7 +11,7 @@
 
 MMO Vault ist ein lokaler Passwortmanager, der vollständig als **eine einzelne HTML-Datei** ausgeliefert wird und ausschließlich im Browser des Anwenders läuft. Er verwaltet Zugangsdaten, Freitext-Notizen, 2FA-Secrets und Dateianhänge in einer verschlüsselten Datei, die der Anwender selbst besitzt und ablegt.
 
-Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.3.0. Es richtet sich an Entwicklung, Review und Abnahme.
+Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.3.1. Es richtet sich an Entwicklung, Review und Abnahme.
 
 ### 1.1 Nicht im Geltungsbereich
 
@@ -153,6 +153,7 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 |---|---|
 | FUN-18 | Zeitbasierte Einmalpasswörter MÜSSEN nach **RFC 6238** erzeugt werden, mit dynamischer Truncation nach RFC 4226. |
 | FUN-19 | Die Parameter **Stellenzahl** (6–10), **Periode** (5–300 s) und **Algorithmus** (SHA-1, SHA-256, SHA-512) MÜSSEN je Eintrag gespeichert und verwendet werden. Vorgabe: 6 / 30 s / SHA-1. |
+| FUN-19a | Wird das 2FA-Secret von Hand geändert, MÜSSEN die Parameter aus FUN-19 auf die Standardwerte zurückfallen. Ein anderes Secret gehört zu einem anderen Konto; die Parameter eines früheren QR-Imports würden sonst still falsche Codes erzeugen. |
 | FUN-20 | Der aktuelle Code MUSS mit einem Fortschrittsring bis zum Ablauf der Periode angezeigt werden. |
 | FUN-21 | Ein Secret MUSS als Base32 manuell eingebbar sein. |
 | FUN-22 | Ein `otpauth://totp/…`-QR-Code MUSS als Bilddatei importierbar sein (Klick oder Drag & Drop) — über die native `BarcodeDetector`-API, ohne externe Bibliothek. |
@@ -185,7 +186,7 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 | FUN-39 | Scheitert das Speichern nach einem Passwortwechsel, MUSS ausdrücklich darauf hingewiesen werden, dass die Datei noch das alte Passwort trägt. |
 | FUN-39a | Scheitert das Schreiben in die verknüpfte Datei, MUSS die Anwendung einen Ausweg anbieten: die Daten als Download sichern oder einen anderen Speicherort wählen. Ohne das lägen die Änderungen nur noch im Speicher. |
 | FUN-39b | Dieser Ausweg MUSS als Rückfrage erscheinen und DARF NICHT ungefragt herunterladen. Der Grund des Fehlschlags MUSS im Dialog stehen. |
-| FUN-39c | Wird „anderen Speicherort" gewählt, MUSS das bisherige Datei-Handle verworfen werden. Ein durch einen Sync-Client ersetztes Handle bleibt sonst dauerhaft unbrauchbar. |
+| FUN-39c | Wird „anderen Speicherort" gewählt, MUSS das bisherige Datei-Handle verworfen werden. Ein durch einen Sync-Client ersetztes Handle bleibt sonst dauerhaft unbrauchbar. Das Verwerfen gilt nur vorläufig: bricht der Anwender die Ortsauswahl ab, MUSS die bestehende Verknüpfung erhalten bleiben. |
 | FUN-39d | Jeder Weg, der den Rückfalldialog schließt — Schaltfläche, Escape, Sperren — MUSS die wartende Speicheroperation auflösen. Ein offenes Versprechen ließe den Aufrufer endlos warten. |
 
 ### 4.6 Änderungsverlauf
@@ -325,6 +326,7 @@ Abgehakte Punkte sind nachweisbar geprüft — die Krypto-, Datenintegritäts-, 
 - [x] Nach einem fehlgeschlagenen Schreibvorgang erscheint der Rückfalldialog mit dem Fehlergrund; „als Download sichern" persistiert die Daten, „anderen Speicherort" schreibt an den neu gewählten Ort und lässt die alte Datei unangetastet, „Abbrechen" behält „ungespeichert"
 - [x] Escape und Sperren lösen den wartenden Speichervorgang auf, statt ihn hängen zu lassen
 - [x] Im Ablauf „Speichern & Sperren" wird nach dem Rettungs-Download gesperrt, nach „Abbrechen" nicht
+- [x] Wird die Ortsauswahl nach „anderen Speicherort" abgebrochen, bleibt die bisherige Datei-Verknüpfung erhalten; bei erfolgreicher Auswahl gilt das neue Handle
 - [x] Roundtrip Anlegen → Speichern → Laden → Entschlüsseln erhält alle Feldwerte inklusive TOTP-Parameter
 - [x] Anhänge werden lazy nachgeladen und liegen nicht im Textblock
 
@@ -340,6 +342,7 @@ Abgehakte Punkte sind nachweisbar geprüft — die Krypto-, Datenintegritäts-, 
 
 - [x] QR-Import übernimmt Secret, Aussteller, Konto sowie Stellenzahl, Periode und Algorithmus
 - [x] HOTP-QR wird mit verständlicher Meldung abgewiesen
+- [x] Ein von Hand ersetztes 2FA-Secret fällt auf 6 Stellen / 30 s / SHA-1 zurück und erzeugt den Code, den ein Standard-Authenticator erwartet; ein QR-Import behält seine abweichenden Parameter
 - [x] `javascript:`-URLs werden abgewiesen, schemalose Eingaben zu `https://` ergänzt
 - [x] Suche ohne Treffer zeigt „Keine Treffer" statt einer leeren Seite
 - [x] Escape schließt den obersten Dialog; Hintergrundklick schließt nur Dialoge ohne Eingabefelder

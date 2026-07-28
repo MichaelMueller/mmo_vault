@@ -951,7 +951,7 @@ h1.brand{
       </div>
       <div>
         <h3 id="aboutTitle" style="margin:0;">MMO Vault</h3>
-        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.3.0 · lokaler Passwortmanager</p>
+        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.3.1 · lokaler Passwortmanager</p>
       </div>
     </div>
 
@@ -1073,7 +1073,7 @@ const I18N = {
     change_btn: 'Ändern',
     history_h: 'Änderungsverlauf',
     close: 'Schließen',
-    about_version: 'Version 1.3.0 · lokaler Passwortmanager',
+    about_version: 'Version 1.3.1 · lokaler Passwortmanager',
     about_p1: 'Entwickelt von <strong>Michael Müller</strong>. Teil der <strong>MMO</strong>-Toolreihe für Eigenprojekte.',
     about_p2: 'Läuft vollständig lokal im Browser als einzelne HTML-Datei — keine externen Server, keine CDN-Abhängigkeiten, keine Telemetrie, per Content-Security-Policy erzwungen. Verschlüsselung per AES-256-GCM (PBKDF2-SHA256, 600.000 Iterationen), TOTP-2FA nach RFC 6238, QR-Code-Import über die native BarcodeDetector-API.',
     about_p3: 'Keine Garantie, keine Gewährleistung — nutz es auf eigene Verantwortung, wie jedes selbstgebaute Werkzeug. Regelmäßige Backups der Vault-Datei sind Pflicht, nicht optional.',
@@ -1229,7 +1229,7 @@ const I18N = {
     change_btn: 'Change',
     history_h: 'Change history',
     close: 'Close',
-    about_version: 'Version 1.3.0 · local password manager',
+    about_version: 'Version 1.3.1 · local password manager',
     about_p1: 'Developed by <strong>Michael Müller</strong>. Part of the <strong>MMO</strong> tool series for personal projects.',
     about_p2: 'Runs entirely locally in the browser as a single HTML file — no external servers, no CDN dependencies, no telemetry, enforced by a Content Security Policy. Encryption via AES-256-GCM (PBKDF2-SHA256, 600,000 iterations), TOTP 2FA per RFC 6238, QR code import via the native BarcodeDetector API.',
     about_p3: 'No warranty, no guarantee — use at your own risk, like any self-built tool. Regular backups of the vault file are mandatory, not optional.',
@@ -2063,6 +2063,7 @@ function closeAllDialogs(){
   currentTags = [];
   currentAttachments = [];
   currentTotpParams = { ...TOTP_DEFAULTS };
+  currentTotpParamsSecret = '';
   renderTagChips();
   renderAttachmentList();
   updateTotpParamsHint();
@@ -2437,9 +2438,20 @@ async function offerSaveFallback(jsonText, reason){
   if(choice === 'pick'){
     // Handle verwerfen und erneut speichern — saveToFile() fragt dann nach einem
     // neuen Ort. Nötig, weil ein durch Sync ersetztes Handle dauerhaft tot ist.
+    // Das Verwerfen gilt aber nur vorläufig: bricht der Nutzer die Ortsauswahl
+    // ab, hat er nichts gewählt und die bestehende Verknüpfung muss zurück.
+    const vorherigesHandle = state.fileHandle;
+    const vorherigeBeschriftung = document.getElementById('currentFileLabel').textContent;
     state.fileHandle = null;
     document.getElementById('currentFileLabel').textContent = '';
-    return saveToFile();
+    const gespeichert = await saveToFile();
+    // Nur zurücksetzen, wenn auch kein neues Handle zustande kam — sonst würde
+    // eine erfolgreich gewählte Datei wieder durch die alte überschrieben.
+    if(!gespeichert && !state.fileHandle){
+      state.fileHandle = vorherigesHandle;
+      document.getElementById('currentFileLabel').textContent = vorherigeBeschriftung;
+    }
+    return gespeichert;
   }
   return false; // Abbrechen: "ungespeichert" bleibt stehen
 }
@@ -2998,6 +3010,10 @@ document.getElementById('attachmentFileInput').addEventListener('change', async 
    und sind in der Oberfläche nicht editierbar, müssen aber erhalten bleiben —
    sonst würden für 8-stellige oder SHA-256/512-Konten falsche Codes erzeugt. */
 let currentTotpParams = { ...TOTP_DEFAULTS };
+/* Secret, zu dem die Parameter gehören. Nur so lässt sich erkennen, ob das Feld
+   von Hand auf ein anderes Konto geändert wurde — dann gelten die Parameter aus
+   einem früheren QR-Import nicht mehr. */
+let currentTotpParamsSecret = '';
 
 function updateTotpParamsHint(){
   const hint = document.getElementById('totpParamsHint');
@@ -3022,6 +3038,7 @@ function openEntryDialog(entry){
   document.getElementById('entryTotp').value = entry ? entry.totp || '' : '';
   document.getElementById('entryNotes').value = entry ? entry.notes || '' : '';
   currentTotpParams = entry ? totpParamsOf(entry) : { ...TOTP_DEFAULTS };
+  currentTotpParamsSecret = entry ? (entry.totp || '') : '';
   currentTags = entry ? (entry.tags || []).slice() : [];
   currentAttachments = entry ? (entry.attachments || []).slice() : [];
   document.getElementById('tagInputField').value = '';
@@ -3178,6 +3195,7 @@ function applyOtpAuthUri(raw){
     totpPeriod: Number.isNaN(period) ? undefined : period,
     totpAlgorithm: url.searchParams.get('algorithm')
   });
+  currentTotpParamsSecret = document.getElementById('entryTotp').value;
   updateTotpParamsHint();
 
   // Label-Format: otpauth://totp/Issuer:Account?issuer=Issuer&secret=...
@@ -3196,7 +3214,15 @@ function applyOtpAuthUri(raw){
 /* Wird das Secret von Hand geleert oder ersetzt, passen die aus einem früheren
    QR-Code stammenden Parameter nicht mehr — dann zurück auf die Standardwerte. */
 document.getElementById('entryTotp').addEventListener('input', (e) => {
-  if(!e.target.value.trim()) currentTotpParams = { ...TOTP_DEFAULTS };
+  const eingegeben = e.target.value.replace(/\s/g,'');
+  // Ein von Hand geändertes Secret gehört zu einem anderen Konto. Die Parameter
+  // eines früheren QR-Imports gelten dafür nicht mehr — sonst erzeugte die App
+  // still Codes mit fremder Stellenzahl, Periode oder Prüfsumme. Vorher wurde
+  // nur beim Leeren des Feldes zurückgesetzt, ein Ersetzen blieb unbemerkt.
+  if(eingegeben !== currentTotpParamsSecret){
+    currentTotpParams = { ...TOTP_DEFAULTS };
+    currentTotpParamsSecret = eingegeben;
+  }
   updateTotpParamsHint();
 });
 

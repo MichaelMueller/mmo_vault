@@ -2,7 +2,7 @@
 
 **Lokaler Passwortmanager als eine einzige HTML-Datei.** Keine Server, keine Installation, keine Abhängigkeiten — der Vault ist eine verschlüsselte Datei, die dir gehört und die du selbst ablegst.
 
-> **Version 1.2.0** · Funktional vollständig. Alle automatisiert prüfbaren Abnahmekriterien sind verifiziert — Kryptografie gegen die RFC-Testvektoren, Speicher-Roundtrip mit Rollback, Sperrverhalten, Container-Auslieferung und Layout von 320 px bis Desktop.
+> **Version 1.2.1** · Funktional vollständig. Alle automatisiert prüfbaren Abnahmekriterien sind verifiziert — Kryptografie gegen die RFC-Testvektoren, Speicher-Roundtrip mit Rollback, Sperrverhalten, Container-Auslieferung und Layout von 320 px bis Desktop.
 >
 > **Sechs Prüfungen erfordern Handarbeit und stehen aus:** Ablauf der Auto-Sperre, Sichtprüfung der Übersetzungen auf Umbrüche, Bedienung allein mit Tastatur, Funktionsprüfung in Firefox und Safari, Ersatzverhalten ohne File System Access API und ohne `BarcodeDetector`, sowie die Prüfung mit dem Reverse Proxy der Zielumgebung. Der jeweils aktuelle Stand steht in [docs/requirements.md](docs/requirements.md#9-abnahmekriterien) als Kästchenliste.
 
@@ -27,12 +27,12 @@ docker compose up -d --build     # → http://127.0.0.1:4080/
 Oder ohne Compose:
 
 ```bash
-docker build -t mmo-vault:1.2.0 .
+docker build -t mmo-vault:1.2.1 .
 docker run -d --name mmo-vault --restart unless-stopped \
   -p 127.0.0.1:4080:8080 \
   --read-only --tmpfs /tmp --cap-drop ALL \
   --security-opt no-new-privileges:true \
-  mmo-vault:1.2.0
+  mmo-vault:1.2.1
 ```
 
 Port und Bind-Adresse lassen sich ohne Änderung der compose.yaml setzen:
@@ -62,7 +62,7 @@ docker compose up -d --build
 Wer auf dem Server nicht bauen will, überträgt stattdessen das fertige Abbild:
 
 ```bash
-docker save mmo-vault:1.2.0 | gzip | ssh server 'gunzip | docker load'
+docker save mmo-vault:1.2.1 | gzip | ssh server 'gunzip | docker load'
 ```
 
 **Start nach dem Reboot** kommt aus `restart: unless-stopped` in der compose.yaml — das greift aber nur, wenn der Docker-Dienst selbst beim Booten startet:

@@ -1,6 +1,6 @@
 # MMO Vault — Anforderungsspezifikation
 
-**Version:** 1.3.1
+**Version:** 1.4.0
 **Stand:** 2026-07-28
 **Status:** Im Eigenbetrieb freigegeben. Alle automatisiert prüfbaren Kriterien aus Kapitel 9 sind verifiziert; die verbleibenden erfordern manuelle Durchführung und stehen dort als unmarkierte Kästchen. Diese Zahl wird hier bewusst nicht wiederholt, damit sie nicht veraltet.
 **Autor:** Michael Müller
@@ -11,7 +11,7 @@
 
 MMO Vault ist ein lokaler Passwortmanager, der vollständig als **eine einzelne HTML-Datei** ausgeliefert wird und ausschließlich im Browser des Anwenders läuft. Er verwaltet Zugangsdaten, Freitext-Notizen, 2FA-Secrets und Dateianhänge in einer verschlüsselten Datei, die der Anwender selbst besitzt und ablegt.
 
-Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.3.1. Es richtet sich an Entwicklung, Review und Abnahme.
+Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.4.0. Es richtet sich an Entwicklung, Review und Abnahme.
 
 ### 1.1 Nicht im Geltungsbereich
 
@@ -146,6 +146,15 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 | FUN-15 | Passwörter MÜSSEN in der Übersicht maskiert und einzeln aufdeckbar sein. |
 | FUN-16 | URL, Benutzername, Passwort und 2FA-Code MÜSSEN einzeln in die Zwischenablage kopierbar sein. |
 | FUN-17 | Bei leerem Ergebnis MUSS unterschieden werden zwischen „noch keine Einträge angelegt" und „Suche/Filter ohne Treffer". |
+| FUN-17a | Jeder Eintrag MUSS eine kurze, fortlaufende Nummer tragen, die bei der Anlage vergeben wird und **nie wiederverwendet** wird. Der Zähler wird mitverschlüsselt gespeichert; das Maximum der vorhandenen Nummern zu nehmen wäre unzulässig, weil nach dem Löschen des höchsten Eintrags ein gespeicherter Verweis auf einen anderen Eintrag zeigen würde. |
+| FUN-17b | Einträge aus Dateien ohne Nummern MÜSSEN beim Entsperren welche erhalten, in Anlagereihenfolge, und der Vault MUSS dabei als ungespeichert markiert werden. |
+| FUN-17c | Die Nummer MUSS auf der Karte sichtbar sein und beim Antippen den zugehörigen Suchausdruck in die Zwischenablage legen. |
+| FUN-17d | Die Suche MUSS Feldfilter der Form `schlüssel=wert` unterstützen, mindestens `id`, `tag`, `typ`, `benutzer`, `titel`. Mehrere Filter und freie Begriffe verknüpfen mit UND, ebenso mit den Filter-Chips. Ein unbekannter Schlüssel MUSS als Volltext behandelt werden, damit nichts stillschweigend wegfällt. |
+| FUN-17e | `id=` MUSS sowohl die fortlaufende Nummer (mit und ohne `#`) als auch die interne ID akzeptieren. |
+| FUN-17f | Ein Suchausdruck KANN über das Adress-Fragment `#search=…` vorbelegt werden. Er MUSS ausschließlich das Suchfeld füllen — kein Entsperren, kein Öffnen eines Eintrags, nichts Zustandsänderndes. Nach dem Anwenden MUSS er aus der Adresse entfernt werden. |
+| FUN-17g | Für diesen Zweck DARF KEIN Query-String verwendet werden. Query-Strings werden an den Server übertragen und landen im Zugriffsprotokoll; ein Suchbegriff ist hier typischerweise ein Kontoname. Fragmente werden nie gesendet. |
+| FUN-17h | Ein Eintrag MUSS duplizierbar sein. Das Duplikat MUSS eine neue ID und Nummer erhalten und **eigene Anhangs-IDs mit eigenen Kopien der Rohdaten**. Gemeinsam genutzte Anhangs-IDs sind unzulässig, weil beide Einträge dann auf denselben verschlüsselten Block zeigen und das Löschen des einen den anderen beeinflusst. |
+| FUN-17i | Scheitert das Entschlüsseln eines Anhangs beim Duplizieren, DARF kein Teil-Duplikat entstehen. |
 
 ### 4.3 Zwei-Faktor-Authentifizierung
 
@@ -211,6 +220,20 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 | FUN-50 | Unter 560 px MUSS die Suche eine eigene Zeile über die volle Breite erhalten. Nebeneinander mit Dateiname und Menü bleibt zu wenig Platz für eine brauchbare Eingabe. |
 | FUN-51 | Eingabefelder MÜSSEN auf Touch-Geräten mindestens 16 px Schriftgröße haben, damit iOS beim Fokussieren nicht in die Seite zoomt. |
 | FUN-52 | Die Kopfleiste MUSS links eine Bildmarke tragen, die auch dann sichtbar bleibt, wenn der Schriftzug auf schmalen Bildschirmen entfällt. |
+
+### 4.8 Markdown in Freitext-Einträgen
+
+| ID | Anforderung |
+|---|---|
+| FUN-53 | Der Inhalt von Freitext-Einträgen MUSS als Markdown dargestellt werden. Notizen an Zugangsdaten bleiben reiner Text. Gesucht und bearbeitet wird immer der Rohtext. |
+| FUN-54 | Der Renderer MUSS ausschließlich DOM-Knoten über `createElement` und `textContent` erzeugen und DARF `innerHTML` nicht verwenden. Damit ist HTML-Injection konstruktionsbedingt ausgeschlossen und SEC-23 bleibt gewahrt — ein Sanitizer wäre eine schwächere Zusicherung. |
+| FUN-55 | Unterstützt werden MÜSSEN: Überschriften, fett, kursiv, durchgestrichen, Inline-Code, Code-Blöcke, Listen (geordnet und ungeordnet), Zitat, Trennlinie, Links. |
+| FUN-56 | Bilder DÜRFEN NICHT gerendert werden. Ein `<img>` mit externer Quelle wäre ein Netzwerk-Beacon und würde die Zusage aus SEC-20 bis SEC-22 brechen. Der Tag DARF nicht entstehen, unabhängig davon, dass die CSP ihn zusätzlich blockt. |
+| FUN-57 | Eingebettetes HTML im Markdown MUSS als Text ausgegeben werden. |
+| FUN-58 | Links MÜSSEN dieselbe Allowlist wie Eintrags-URLs durchlaufen (nur `http`/`https`) und mit `noopener noreferrer` öffnen. Abgewiesene Ziele MÜSSEN als Text erhalten bleiben. |
+| FUN-59 | Ein einzelner Zeilenumbruch MUSS ein Umbruch bleiben und DARF NICHT zum Absatz zusammengezogen werden. Abweichung von CommonMark, weil in Notizen Dinge wie Backup-Codes zeilenweise stehen. |
+| FUN-60 | Lange Notizen MÜSSEN auf der Karte in der Höhe begrenzt und aufklappbar sein. Die Begrenzung ist rein visuell. |
+| FUN-61 | Der Eintrags-Dialog MUSS für Freitext eine Vorschau-Umschaltung anbieten. |
 
 ---
 
@@ -343,6 +366,18 @@ Abgehakte Punkte sind nachweisbar geprüft — die Krypto-, Datenintegritäts-, 
 - [x] QR-Import übernimmt Secret, Aussteller, Konto sowie Stellenzahl, Periode und Algorithmus
 - [x] HOTP-QR wird mit verständlicher Meldung abgewiesen
 - [x] Ein von Hand ersetztes 2FA-Secret fällt auf 6 Stellen / 30 s / SHA-1 zurück und erzeugt den Code, den ein Standard-Authenticator erwartet; ein QR-Import behält seine abweichenden Parameter
+
+### 9.7 Nummern, Suche, Duplikate und Markdown
+
+- [x] Einträge ohne Nummer erhalten beim Entsperren welche in Anlagereihenfolge; der Zähler wird gespeichert und nach dem Löschen des höchsten Eintrags nicht erneut vergeben
+- [x] Suchsyntax geprüft: `id=1`, `id=#2`, `id=<interne-id>`, `tag=`, `typ=`, `benutzer=`, `titel=`, Kombination `id=1 nextcloud` (Treffer) und `id=1 bank` (kein Treffer), unbekannter Schlüssel bleibt Volltext
+- [x] `#search=id%3D2` belegt das Suchfeld vor, filtert auf den passenden Eintrag und wird aus der Adresszeile entfernt
+- [x] Duplikat erhält neue ID, neue Nummer, Titelzusatz und eigene Anhangs-IDs; die Datei enthält danach zwei getrennte Blöcke, und das Löschen des Originals lässt den Anhang des Duplikats lesbar
+- [x] Markdown-Renderer erzeugt Überschriften, fett, kursiv, Code, Code-Block, beide Listenarten, Zitat, Trennlinie und Links
+- [x] Injection-Prüfung: kein `<img>`, kein `<script>`, keine `on*`-Attribute; rohes HTML und Code-Block-Inhalt bleiben Text; `javascript:`-Link wird nicht verlinkt, sein Text bleibt erhalten; alle Links `http`/`https` mit `noopener noreferrer`
+- [x] Einzelne Zeilenumbrüche bleiben als `<br>` erhalten (Backup-Code-Fall)
+- [x] Notizen an Zugangsdaten bleiben reiner Text — `**text**` wird nicht formatiert
+- [x] Vorschau nur bei Freitext, rendert den Rohtext und wird beim Zurückschalten und beim Sperren geleert
 - [x] `javascript:`-URLs werden abgewiesen, schemalose Eingaben zu `https://` ergänzt
 - [x] Suche ohne Treffer zeigt „Keine Treffer" statt einer leeren Seite
 - [x] Escape schließt den obersten Dialog; Hintergrundklick schließt nur Dialoge ohne Eingabefelder

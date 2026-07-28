@@ -330,6 +330,15 @@ h1.brand{
 }
 .seg-btn.active{background:var(--primary-container); color:var(--on-primary-container); border-color:var(--primary-container);}
 
+.entry-num{
+  font-family: var(--font-mono); font-size:10.5px; letter-spacing:.3px;
+  color:var(--on-surface-variant); background:var(--surface-container-high);
+  border:1px solid var(--outline-variant);
+  border-radius:8px; padding:2px 7px; white-space:nowrap; flex-shrink:0;
+  cursor:pointer;
+}
+.entry-num:hover{color:var(--primary); border-color:var(--outline);}
+
 .type-badge{
   font-size:10.5px; text-transform:uppercase; letter-spacing:.6px; font-weight:600;
   color:var(--on-surface-variant); background:var(--surface-container-highest);
@@ -380,6 +389,61 @@ h1.brand{
 /* Notizen und Freitext-Inhalte können lange, umbruchlose Zeichenketten
    enthalten (Lizenzschlüssel, Tokens) — die dürfen die Karte nicht aufweiten. */
 .notes-slot{overflow-wrap:anywhere;}
+
+/* ---------- Markdown-Darstellung ---------- */
+.md-body{white-space:normal;}
+.md-body > :first-child{margin-top:0;}
+.md-body > :last-child{margin-bottom:0;}
+.md-p{margin:0 0 8px;}
+.md-h{margin:12px 0 6px; color:var(--on-surface); font-family:var(--font-display); letter-spacing:.4px;}
+.md-h1{font-size:14px; text-transform:uppercase;}
+.md-h2{font-size:13.5px;}
+.md-h3{font-size:13px;}
+.md-body code{
+  font-family:var(--font-mono); font-size:11.5px;
+  background:var(--surface-container-highest); border-radius:5px; padding:1px 5px;
+}
+.md-pre{
+  margin:0 0 8px; padding:9px 11px; overflow-x:auto;
+  background:var(--surface-container-highest); border-radius:var(--radius-s);
+}
+.md-pre code{background:none; padding:0; font-size:11.5px; white-space:pre;}
+.md-list{margin:0 0 8px; padding-left:20px;}
+.md-list li{margin:2px 0;}
+.md-quote{
+  margin:0 0 8px; padding:2px 0 2px 10px;
+  border-left:3px solid var(--outline); color:var(--on-surface-variant);
+}
+.md-hr{border:none; border-top:1px solid var(--outline-variant); margin:10px 0;}
+.md-link{color:var(--primary); text-decoration:underline;}
+.md-body strong{color:var(--on-surface);}
+
+/* Lange Notizen wuerden die Kachel sprengen — daher begrenzen und aufklappbar
+   machen. Die Begrenzung ist rein visuell, der Inhalt steht vollstaendig im DOM. */
+.notes-clamped{max-height:15em; overflow:hidden; position:relative;}
+.notes-clamped::after{
+  content:""; position:absolute; left:0; right:0; bottom:0; height:2.4em;
+  background:linear-gradient(to bottom, transparent, var(--surface-container));
+  pointer-events:none;
+}
+.notes-more{
+  background:none; border:none; padding:4px 0 0; cursor:pointer;
+  color:var(--primary); font-size:12px; font-family:inherit;
+}
+
+.md-tabs{display:flex; gap:6px; margin-bottom:8px;}
+.md-tab{
+  border:1px solid var(--outline); background:transparent; color:var(--on-surface-variant);
+  border-radius:14px; padding:6px 14px; font-size:12.5px; cursor:pointer;
+}
+.md-tab.active{background:var(--primary-container); color:var(--on-primary-container); border-color:var(--primary-container);}
+.md-preview{
+  background:var(--surface-container-high); border:1px solid var(--outline);
+  border-radius:var(--radius-s); padding:12px 14px; margin-bottom:18px;
+  min-height:120px; max-height:40vh; overflow-y:auto;
+  font-size:13px; color:var(--on-surface-variant);
+}
+.md-preview:empty::before{content:attr(data-empty); opacity:.6;}
 
 .entry-tags{display:flex; flex-wrap:wrap; gap:5px; margin-top:10px;}
 .entry-tags .tag-pill{
@@ -824,10 +888,17 @@ h1.brand{
       </div>
     </div>
 
+    <!-- Nur fuer Freitext sichtbar: Markdown ohne Vorschau ist auf kleinen
+         Bildschirmen kaum beurteilbar. -->
+    <div class="md-tabs" id="notesTabs" style="display:none;">
+      <button type="button" class="md-tab active" id="tabNotesEdit" data-i18n="tab_edit">Bearbeiten</button>
+      <button type="button" class="md-tab" id="tabNotesPreview" data-i18n="tab_preview">Vorschau</button>
+    </div>
     <div class="field" id="notesFieldWrap">
       <textarea id="entryNotes" placeholder=" " rows="2"></textarea>
       <label id="notesFieldLabel" for="entryNotes" data-i18n="notes_label">Notizen</label>
     </div>
+    <div class="md-preview md-body" id="notesPreview" style="display:none;"></div>
 
     <div class="tag-input-box" id="tagInputBox">
       <span class="field-label" data-i18n="tags_label">Tags</span>
@@ -852,6 +923,7 @@ h1.brand{
 <!-- ============ Kontext-Menü ============ -->
 <div class="menu-pop" id="entryMenu">
   <button id="menuEdit"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75z"></path></svg> <span data-i18n="edit">Bearbeiten</span></button>
+  <button id="menuDuplicate"><svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11z"></path></svg> <span data-i18n="duplicate">Duplizieren</span></button>
   <button id="menuDelete" class="danger"><svg viewBox="0 0 24 24"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z"></path></svg> <span data-i18n="delete">Löschen</span></button>
 </div>
 
@@ -951,7 +1023,7 @@ h1.brand{
       </div>
       <div>
         <h3 id="aboutTitle" style="margin:0;">MMO Vault</h3>
-        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.3.1 · lokaler Passwortmanager</p>
+        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.4.0 · lokaler Passwortmanager</p>
       </div>
     </div>
 
@@ -1018,7 +1090,6 @@ const I18N = {
     back: 'Zurück',
     about_link: 'ℹ️ Über MMO Vault',
     search_entries: 'Einträge durchsuchen…',
-    export_file: 'Als verschlüsselte Datei exportieren',
     change_password_title: 'Master-Passwort ändern',
     history_title: 'Änderungsverlauf',
     about_title: 'Über MMO Vault',
@@ -1065,7 +1136,18 @@ const I18N = {
     cancel: 'Abbrechen',
     save: 'Speichern',
     edit: 'Bearbeiten',
+    duplicate: 'Duplizieren',
     delete: 'Löschen',
+    copy_suffix: ' (Kopie)',
+    toast_entry_duplicated: 'Eintrag dupliziert — nicht vergessen zu speichern.',
+    hist_entry_duplicated: 'Eintrag dupliziert',
+    entry_num_tt: 'Nummer — antippen kopiert den Suchausdruck',
+    toast_entry_num_copied: 'Suchausdruck kopiert',
+    notes_show_more: 'mehr anzeigen',
+    notes_show_less: 'weniger anzeigen',
+    tab_edit: 'Bearbeiten',
+    tab_preview: 'Vorschau',
+    preview_empty: 'Noch kein Inhalt.',
     change_password_h: 'Master-Passwort ändern',
     current_master_password: 'Aktuelles Master-Passwort',
     confirm_new_master_password: 'Neues Master-Passwort bestätigen',
@@ -1073,7 +1155,7 @@ const I18N = {
     change_btn: 'Ändern',
     history_h: 'Änderungsverlauf',
     close: 'Schließen',
-    about_version: 'Version 1.3.1 · lokaler Passwortmanager',
+    about_version: 'Version 1.4.0 · lokaler Passwortmanager',
     about_p1: 'Entwickelt von <strong>Michael Müller</strong>. Teil der <strong>MMO</strong>-Toolreihe für Eigenprojekte.',
     about_p2: 'Läuft vollständig lokal im Browser als einzelne HTML-Datei — keine externen Server, keine CDN-Abhängigkeiten, keine Telemetrie, per Content-Security-Policy erzwungen. Verschlüsselung per AES-256-GCM (PBKDF2-SHA256, 600.000 Iterationen), TOTP-2FA nach RFC 6238, QR-Code-Import über die native BarcodeDetector-API.',
     about_p3: 'Keine Garantie, keine Gewährleistung — nutz es auf eigene Verantwortung, wie jedes selbstgebaute Werkzeug. Regelmäßige Backups der Vault-Datei sind Pflicht, nicht optional.',
@@ -1174,7 +1256,6 @@ const I18N = {
     back: 'Back',
     about_link: 'ℹ️ About MMO Vault',
     search_entries: 'Search entries…',
-    export_file: 'Export as encrypted file',
     change_password_title: 'Change master password',
     history_title: 'Change history',
     about_title: 'About MMO Vault',
@@ -1221,7 +1302,18 @@ const I18N = {
     cancel: 'Cancel',
     save: 'Save',
     edit: 'Edit',
+    duplicate: 'Duplicate',
     delete: 'Delete',
+    copy_suffix: ' (copy)',
+    toast_entry_duplicated: 'Entry duplicated — remember to save.',
+    hist_entry_duplicated: 'Entry duplicated',
+    entry_num_tt: 'Number — tap to copy the search expression',
+    toast_entry_num_copied: 'Search expression copied',
+    notes_show_more: 'show more',
+    notes_show_less: 'show less',
+    tab_edit: 'Edit',
+    tab_preview: 'Preview',
+    preview_empty: 'No content yet.',
     change_password_h: 'Change master password',
     current_master_password: 'Current master password',
     confirm_new_master_password: 'Confirm new master password',
@@ -1229,7 +1321,7 @@ const I18N = {
     change_btn: 'Change',
     history_h: 'Change history',
     close: 'Close',
-    about_version: 'Version 1.3.1 · local password manager',
+    about_version: 'Version 1.4.0 · local password manager',
     about_p1: 'Developed by <strong>Michael Müller</strong>. Part of the <strong>MMO</strong> tool series for personal projects.',
     about_p2: 'Runs entirely locally in the browser as a single HTML file — no external servers, no CDN dependencies, no telemetry, enforced by a Content Security Policy. Encryption via AES-256-GCM (PBKDF2-SHA256, 600,000 iterations), TOTP 2FA per RFC 6238, QR code import via the native BarcodeDetector API.',
     about_p3: 'No warranty, no guarantee — use at your own risk, like any self-built tool. Regular backups of the vault file are mandatory, not optional.',
@@ -1408,6 +1500,7 @@ let state = {
   history: [],         // [{ts, action, detail}] — Änderungsverlauf, wird mitverschlüsselt
   fileBlockLines: new Map(), // id -> {iv,data} — noch verschlüsselte Anhangs-Blöcke (lazy)
   fsaBlocked: false,   // true, wenn File System Access API im aktuellen Frame gesperrt ist (z. B. Cross-Origin-iframe)
+  nextNum: 1,          // naechste laufende Eintragsnummer, wird mitgespeichert
   autoLockMinutes: DEFAULT_AUTO_LOCK_MINUTES, // 0 = deaktiviert; wird mit im Vault gespeichert
   fileHandle: null,    // File System Access Handle, falls verfügbar
   pendingVault: null,  // geparste, noch verschlüsselte Datei zwischen Auswahl und Entsperren
@@ -1637,6 +1730,208 @@ async function totpForEntry(entry, timestamp=Date.now()){
   return { code, secondsRemaining: period - (nowSec % period), period };
 }
 
+/* ============================================================
+   Markdown für Freitext-Einträge
+
+   Der Renderer erzeugt ausschließlich DOM-Knoten über createElement und
+   textContent — nie innerHTML. Damit ist HTML-Injection konstruktionsbedingt
+   unmöglich statt nur wegdefiniert, und SEC-23 bleibt gültig. Kein Sanitizer,
+   keine Abhängigkeit, verträglich mit der Content-Security-Policy.
+
+   Zwei Auslassungen sind Absicht:
+   - Keine Bilder. ![](https://…) wäre ein Netzwerk-Beacon und würde die Zusage
+     "keine externen Requests" brechen. Die CSP blockt es ohnehin, aber der Tag
+     entsteht gar nicht erst.
+   - Kein eingebettetes HTML. Markdown erlaubt es, hier bleibt es Text.
+
+   Abweichung von CommonMark: ein einzelner Zeilenumbruch bleibt ein Umbruch,
+   statt zum Absatz zusammengezogen zu werden. In einem Notizfeld stehen Dinge
+   wie Backup-Codes zeilenweise — die zu einem Block zu verschmelzen wäre ein
+   Rückschritt gegenüber dem bisherigen pre-wrap.
+   ============================================================ */
+
+const MD_INLINE = [
+  { re: /^`([^`]+)`/,                        bau: m => { const el = document.createElement('code'); el.textContent = m[1]; return el; } },
+  { re: /^\*\*([\s\S]+?)\*\*/,               bau: m => mdInlineIn(document.createElement('strong'), m[1]) },
+  { re: /^__([\s\S]+?)__/,                   bau: m => mdInlineIn(document.createElement('strong'), m[1]) },
+  { re: /^\*([^*\n]+)\*/,                    bau: m => mdInlineIn(document.createElement('em'), m[1]) },
+  { re: /^_([^_\n]+)_/,                      bau: m => mdInlineIn(document.createElement('em'), m[1]) },
+  { re: /^~~([\s\S]+?)~~/,                   bau: m => mdInlineIn(document.createElement('del'), m[1]) },
+  { re: /^\[([^\]\n]*)\]\(([^)\s]+)\)/,      bau: m => mdLink(m[2], m[1] || m[2]) },
+  { re: /^(https?:\/\/[^\s<>()]+)/i,         bau: m => mdLink(m[1], m[1]) }
+];
+
+function mdLink(ziel, text){
+  // Dieselbe Allowlist wie bei den Eintrags-URLs: nur http/https. Alles andere
+  // wird als reiner Text ausgegeben, nicht als Verweis.
+  const href = safeExternalUrl(ziel);
+  if(!href){
+    const span = document.createElement('span');
+    span.textContent = text;
+    return span;
+  }
+  const a = document.createElement('a');
+  a.href = href;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.className = 'md-link';
+  a.textContent = text;
+  return a;
+}
+
+/* Zerlegt eine Zeile in Inline-Elemente. Rekursiv, damit **fett mit _kursiv_**
+   funktioniert; Code-Spans werden nicht weiter zerlegt. */
+function mdInlineIn(ziel, text){
+  let rest = text;
+  let puffer = '';
+  const puffernAbgeben = () => {
+    if(puffer){ ziel.appendChild(document.createTextNode(puffer)); puffer = ''; }
+  };
+  while(rest){
+    // Umgekehrter Schrägstrich hebt die Sonderbedeutung des nächsten Zeichens auf
+    if(rest[0] === '\\' && rest.length > 1){ puffer += rest[1]; rest = rest.slice(2); continue; }
+    let getroffen = null;
+    for(const regel of MD_INLINE){
+      const m = rest.match(regel.re);
+      if(m){ getroffen = { regel, m }; break; }
+    }
+    if(getroffen){
+      puffernAbgeben();
+      ziel.appendChild(getroffen.regel.bau(getroffen.m));
+      rest = rest.slice(getroffen.m[0].length);
+    } else {
+      puffer += rest[0];
+      rest = rest.slice(1);
+    }
+  }
+  puffernAbgeben();
+  return ziel;
+}
+
+/* Blockweises Parsen, zeilenorientiert. */
+function renderMarkdownInto(ziel, quelle){
+  ziel.textContent = '';
+  const zeilen = String(quelle || '').replace(/\r\n?/g, '\n').split('\n');
+  let i = 0;
+
+  const istListe = z => /^\s*[-*+]\s+/.test(z);
+  const istNummeriert = z => /^\s*\d+[.)]\s+/.test(z);
+
+  while(i < zeilen.length){
+    const zeile = zeilen[i];
+
+    if(!zeile.trim()){ i++; continue; }
+
+    // Code-Block mit ``` — Inhalt bleibt vollständig unangetastet
+    const zaun = zeile.match(/^\s*```(.*)$/);
+    if(zaun){
+      i++;
+      const inhalt = [];
+      while(i < zeilen.length && !/^\s*```/.test(zeilen[i])){ inhalt.push(zeilen[i]); i++; }
+      if(i < zeilen.length) i++; // schließenden Zaun überspringen
+      const pre = document.createElement('pre');
+      const code = document.createElement('code');
+      code.textContent = inhalt.join('\n');
+      pre.appendChild(code);
+      pre.className = 'md-pre';
+      ziel.appendChild(pre);
+      continue;
+    }
+
+    // Trennlinie
+    if(/^\s*([-*_])(\s*\1){2,}\s*$/.test(zeile)){
+      const hr = document.createElement('hr');
+      hr.className = 'md-hr';
+      ziel.appendChild(hr);
+      i++;
+      continue;
+    }
+
+    // Überschrift
+    const ueberschrift = zeile.match(/^\s*(#{1,6})\s+(.*)$/);
+    if(ueberschrift){
+      const stufe = Math.min(ueberschrift[1].length, 3);
+      const el = document.createElement('h' + (3 + stufe)); // h4..h6, unterhalb der Kartentitel
+      el.className = 'md-h md-h' + stufe;
+      mdInlineIn(el, ueberschrift[2].trim());
+      ziel.appendChild(el);
+      i++;
+      continue;
+    }
+
+    // Zitat: aufeinanderfolgende > Zeilen
+    if(/^\s*>\s?/.test(zeile)){
+      const inhalt = [];
+      while(i < zeilen.length && /^\s*>\s?/.test(zeilen[i])){
+        inhalt.push(zeilen[i].replace(/^\s*>\s?/, ''));
+        i++;
+      }
+      const bq = document.createElement('blockquote');
+      bq.className = 'md-quote';
+      inhalt.forEach((z, idx) => {
+        if(idx) bq.appendChild(document.createElement('br'));
+        mdInlineIn(bq, z);
+      });
+      ziel.appendChild(bq);
+      continue;
+    }
+
+    // Listen, eine Ebene
+    if(istListe(zeile) || istNummeriert(zeile)){
+      const nummeriert = istNummeriert(zeile);
+      const liste = document.createElement(nummeriert ? 'ol' : 'ul');
+      liste.className = 'md-list';
+      while(i < zeilen.length && (nummeriert ? istNummeriert(zeilen[i]) : istListe(zeilen[i]))){
+        const text = zeilen[i].replace(nummeriert ? /^\s*\d+[.)]\s+/ : /^\s*[-*+]\s+/, '');
+        mdInlineIn(liste.appendChild(document.createElement('li')), text);
+        i++;
+      }
+      ziel.appendChild(liste);
+      continue;
+    }
+
+    // Absatz: läuft bis zur nächsten Leerzeile oder zum nächsten Blockanfang.
+    // Einzelne Umbrüche bleiben als <br> erhalten.
+    const absatz = [];
+    while(i < zeilen.length && zeilen[i].trim() &&
+          !/^\s*(#{1,6}\s|>|```)/.test(zeilen[i]) &&
+          !istListe(zeilen[i]) && !istNummeriert(zeilen[i]) &&
+          !/^\s*([-*_])(\s*\1){2,}\s*$/.test(zeilen[i])){
+      absatz.push(zeilen[i]);
+      i++;
+    }
+    const p = document.createElement('p');
+    p.className = 'md-p';
+    absatz.forEach((z, idx) => {
+      if(idx) p.appendChild(document.createElement('br'));
+      mdInlineIn(p, z);
+    });
+    ziel.appendChild(p);
+  }
+}
+
+/* Begrenzt die Höhe einer gerenderten Notiz und hängt bei Bedarf einen
+   Aufklapp-Schalter an. Muss nach dem Einfügen ins Dokument laufen, weil vorher
+   keine Maße vorliegen — deshalb der Aufruf am Ende von renderEntries(). */
+function clampNotes(el){
+  el.classList.add('notes-clamped');
+  requestAnimationFrame(() => {
+    if(el.scrollHeight <= el.clientHeight + 4){
+      el.classList.remove('notes-clamped');
+      return;
+    }
+    const schalter = document.createElement('button');
+    schalter.type = 'button';
+    schalter.className = 'notes-more';
+    schalter.textContent = t('notes_show_more');
+    schalter.onclick = () => {
+      const zu = el.classList.toggle('notes-clamped');
+      schalter.textContent = t(zu ? 'notes_show_more' : 'notes_show_less');
+    };
+    el.after(schalter);
+  });
+}
+
 /* ---------- UI: Toast ---------- */
 function showToast(msg){
   const toastEl = document.getElementById('toast');
@@ -1740,6 +2035,7 @@ document.getElementById('btnCreateVault').onclick = async () => {
   state.entries = [];
   state.history = [];
   state.fileBlockLines = new Map();
+  state.nextNum = 1;
   state.autoLockMinutes = DEFAULT_AUTO_LOCK_MINUTES;
   addHistory('hist_vault_created', '');
   state.fileHandle = null;
@@ -1984,8 +2280,16 @@ async function tryUnlockPendingVault(){
     state.history = Array.isArray(payload.history) ? payload.history : [];
     state.fileBlockLines = vault.fileBlocks || new Map();
     state.autoLockMinutes = typeof payload.autoLockMinutes === 'number' ? payload.autoLockMinutes : DEFAULT_AUTO_LOCK_MINUTES;
+    // Zähler aus der Datei übernehmen; fehlt er (Datei aus einer älteren
+    // Version), hinter der höchsten vorhandenen Nummer fortsetzen.
+    state.nextNum = Number.isInteger(payload.nextNum) && payload.nextNum > 0
+      ? payload.nextNum
+      : state.entries.reduce((m, e) => Math.max(m, Number.isInteger(e.num) ? e.num : 0), 0) + 1;
     state.dirty = false;
     state.pendingVault = null;
+    // Nachträglich Nummern vergeben. Wie beim KDF-Upgrade wird der Vault dabei
+    // als ungespeichert markiert, damit die Zuordnung dauerhaft wird.
+    if(assignMissingEntryNums()) state.dirty = true;
     await upgradeKdfIfOutdated(pw);
     enterApp();
   }catch(err){
@@ -1996,6 +2300,33 @@ async function tryUnlockPendingVault(){
 document.getElementById('unlockPassword').addEventListener('keydown', (e)=>{
   if(e.key === 'Enter') document.getElementById('btnUnlock').click();
 });
+
+/* ---------- Suchausdruck aus der Adresse ----------
+   Bewusst das Fragment (#search=…) und nicht ein Query-String: Fragmente werden
+   nie an den Server gesendet und tauchen damit in keinem Zugriffslog auf. Ein
+   Suchbegriff ist bei einem Passwortmanager typischerweise ein Kontoname und
+   gehört nicht in ein Serverprotokoll.
+
+   Die Adresse darf ausschließlich das Suchfeld vorbelegen — kein Entsperren,
+   kein Öffnen eines Eintrags, nichts Zustandsänderndes. */
+let pendingSearchFromUrl = null;
+
+function readSearchFromUrl(){
+  const hash = location.hash.replace(/^#/, '');
+  if(!hash) return;
+  let ausdruck = null;
+  try{
+    ausdruck = new URLSearchParams(hash).get('search');
+  }catch(err){ return; }
+  if(!ausdruck) return;
+  pendingSearchFromUrl = ausdruck;
+  // Aus der Adresszeile entfernen, damit der Begriff nicht in Verlauf und
+  // Adressleisten-Vervollständigung hängen bleibt.
+  try{
+    history.replaceState(null, '', location.pathname + location.search);
+  }catch(err){ /* bei file:// nicht immer erlaubt — dann bleibt er stehen */ }
+}
+readSearchFromUrl();
 
 /* Prüft, ob die Web-Crypto-API überhaupt bereitsteht. crypto.subtle gibt es nur
    in einem "secure context" — beim Ausliefern über http:// auf einer anderen
@@ -2036,6 +2367,13 @@ function enterApp(){
   document.getElementById('searchInput').value = '';
   searchTerm = '';
   activeTagFilter = 'all';
+  // Ein Suchausdruck aus der Adresse gilt genau einmal, nach dem Zurücksetzen
+  // des Filterzustands und nur für die erste entsperrte Sitzung.
+  if(pendingSearchFromUrl){
+    document.getElementById('searchInput').value = pendingSearchFromUrl;
+    searchTerm = pendingSearchFromUrl.toLowerCase();
+    pendingSearchFromUrl = null;
+  }
   setActiveTypeFilter('all');
   resetAutoLockTimer();
   startTotpTicker();
@@ -2058,6 +2396,9 @@ function closeAllDialogs(){
    'tagInputField','cpCurrentPassword','cpNewPassword','cpNewPasswordConfirm']
     .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   document.getElementById('entryId').value = '';
+  // Die Vorschau enthaelt gerenderten Klartext und muss mit geleert werden.
+  document.getElementById('notesPreview').textContent = '';
+  setNotesTab(false);
   document.getElementById('pwEvalFill').style.width = '0%';
   document.getElementById('cpEvalFill').style.width = '0%';
   currentTags = [];
@@ -2078,6 +2419,7 @@ function lockApp(){
   state.entries = [];
   state.history = [];
   state.fileBlockLines = new Map();
+  state.nextNum = 1;
   state.pendingVault = null;
   state.pendingSource = null;
   state.fileHandle = null;
@@ -2336,7 +2678,8 @@ async function buildVaultLines(){
     ...e,
     attachments: (e.attachments || []).map(a => ({ id: a.id, name: a.name, type: a.type, size: a.size }))
   }));
-  const textPayload = { entries: strippedEntries, history: state.history || [], autoLockMinutes: state.autoLockMinutes };
+  const textPayload = { entries: strippedEntries, history: state.history || [],
+                        autoLockMinutes: state.autoLockMinutes, nextNum: state.nextNum };
   const textEnc = await encryptJSON(state.key, textPayload);
   lines.push(JSON.stringify({ type: 'text', iv: textEnc.iv, data: textEnc.data }));
 
@@ -2529,6 +2872,32 @@ document.getElementById('btnSave').onclick = () => { saveToFile(); };
 
 function uid(){ return 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
+/* ---------- Fortlaufende Eintragsnummer ----------
+   Die interne id ist ein undurchsichtiger Zeitstempel-Zufall-String: nötig als
+   technischer Schlüssel, aber nicht tippbar. Für Anzeige und Suche gibt es
+   deshalb zusätzlich eine kurze laufende Nummer.
+
+   Der Zähler steht mit im verschlüsselten Textblock, statt beim Anlegen das
+   Maximum der vorhandenen Nummern zu nehmen: sonst würde nach dem Löschen des
+   höchsten Eintrags dessen Nummer erneut vergeben und ein gespeicherter Link
+   zeigte plötzlich auf einen anderen Eintrag. */
+function takeNextEntryNum(){
+  const n = Number.isInteger(state.nextNum) && state.nextNum > 0 ? state.nextNum : 1;
+  state.nextNum = n + 1;
+  return n;
+}
+
+/* Vergibt Nummern an Einträge aus Dateien, die noch keine haben. Die
+   Array-Reihenfolge ist die Anlagereihenfolge, weil neue Einträge angehängt
+   werden. Gibt true zurück, wenn etwas geändert wurde. */
+function assignMissingEntryNums(){
+  let geaendert = false;
+  state.entries.forEach(e => {
+    if(!Number.isInteger(e.num) || e.num <= 0){ e.num = takeNextEntryNum(); geaendert = true; }
+  });
+  return geaendert;
+}
+
 let searchTerm = '';
 document.getElementById('searchInput').addEventListener('input', (e)=>{
   searchTerm = e.target.value.toLowerCase();
@@ -2537,16 +2906,78 @@ document.getElementById('searchInput').addEventListener('input', (e)=>{
 
 let activeTagFilter = 'all';
 
+/* ---------- Suchausdruck ----------
+   Der Suchtext wird an Leerzeichen zerlegt. Tokens der Form schluessel=wert
+   werden zu Feldfiltern, alles Uebrige bleibt Volltext. Alle Bedingungen
+   verknuepfen mit UND, ebenso mit den Filter-Chips darueber.
+
+   Absichtlich als generischer Parser und nicht als Sonderfall fuer "id=":
+   weitere Felder kosten damit nur eine Zeile in SEARCH_FIELDS. */
+
+const SEARCH_FIELDS = {
+  id:        'id',
+  nr:        'id',      // deutsche Schreibweise
+  tag:       'tag',
+  typ:       'type',
+  type:      'type',
+  benutzer:  'user',
+  user:      'user',
+  titel:     'title',
+  title:     'title'
+};
+
+function parseSearchQuery(raw){
+  const filters = [];
+  const terms = [];
+  (raw || '').trim().split(/\s+/).filter(Boolean).forEach(token => {
+    const trenner = token.indexOf('=');
+    if(trenner > 0){
+      const schluessel = token.slice(0, trenner).toLowerCase();
+      const wert = token.slice(trenner + 1).toLowerCase();
+      const feld = SEARCH_FIELDS[schluessel];
+      // Nur bekannte Schluessel werden zum Filter. "a=b" ohne bekannten
+      // Schluessel bleibt Volltext, damit nichts stillschweigend wegfaellt.
+      if(feld && wert){ filters.push({ feld, wert }); return; }
+    }
+    terms.push(token.toLowerCase());
+  });
+  return { filters, terms };
+}
+
+function entryMatchesFilter(en, f){
+  switch(f.feld){
+    case 'id':
+      // Sowohl die laufende Nummer (mit oder ohne #) als auch die interne id.
+      return String(en.num) === f.wert.replace(/^#/, '') ||
+             String(en.id || '').toLowerCase() === f.wert;
+    case 'tag':
+      return (en.tags || []).some(tag => tag.toLowerCase() === f.wert);
+    case 'type':
+      return (en.type || 'zugang').toLowerCase() === f.wert;
+    case 'user':
+      return (en.username || '').toLowerCase().includes(f.wert);
+    case 'title':
+      return (en.title || '').toLowerCase().includes(f.wert);
+    default:
+      return false;
+  }
+}
+
+function entryMatchesTerm(en, term){
+  return (en.title||'').toLowerCase().includes(term) ||
+         (en.username||'').toLowerCase().includes(term) ||
+         (en.notes||'').toLowerCase().includes(term) ||
+         (en.tags||[]).some(tag => tag.toLowerCase().includes(term));
+}
+
 function filteredEntries(){
+  const { filters, terms } = parseSearchQuery(searchTerm);
   return state.entries.filter(en => {
     const type = en.type || 'zugang';
     if(activeTypeFilter !== 'all' && type !== activeTypeFilter) return false;
     if(activeTagFilter !== 'all' && !(en.tags || []).includes(activeTagFilter)) return false;
-    if(!searchTerm) return true;
-    return (en.title||'').toLowerCase().includes(searchTerm) ||
-           (en.username||'').toLowerCase().includes(searchTerm) ||
-           (en.notes||'').toLowerCase().includes(searchTerm) ||
-           (en.tags||[]).some(t => t.toLowerCase().includes(searchTerm));
+    if(!filters.every(f => entryMatchesFilter(en, f))) return false;
+    return terms.every(term => entryMatchesTerm(en, term));
   });
 }
 
@@ -2617,6 +3048,7 @@ function renderEntries(){
           <p class="entry-title"></p>
         </div>
         <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+          <span class="entry-num" data-role="entrynum" title="${t('entry_num_tt')}"></span>
           <span class="type-badge"></span>
           <button class="mini-btn entry-menu-btn" title="${t('options_tt')}">
             <svg viewBox="0 0 24 24"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>
@@ -2667,9 +3099,29 @@ function renderEntries(){
     `;
 
     card.querySelector('.entry-title').textContent = entry.title || t('untitled');
+    const numEl = card.querySelector('[data-role="entrynum"]');
+    if(Number.isInteger(entry.num)){
+      numEl.textContent = '#' + entry.num;
+      // Antippen kopiert den fertigen Suchausdruck — damit laesst sich der
+      // Eintrag direkt wiederfinden oder verlinken.
+      numEl.onclick = () => copyToClipboard('id=' + entry.num, 'toast_entry_num_copied');
+    } else {
+      numEl.remove();
+    }
     card.querySelector('.type-badge').textContent = t(typeConfig(type).badgeKey);
     if(entry.notes){
-      card.querySelector('.notes-slot').textContent = entry.notes;
+      const notesEl = card.querySelector('.notes-slot');
+      if(type === 'freitext'){
+        // Freitext wird als Markdown dargestellt. Der Rohtext bleibt im Editor
+        // und in der Suche unveraendert.
+        notesEl.classList.add('md-body');
+        renderMarkdownInto(notesEl, entry.notes);
+        clampNotes(notesEl);
+      } else {
+        // Notizen an Zugangsdaten bleiben reiner Text — dort sind es kurze
+        // Anmerkungen, kein Dokument.
+        notesEl.textContent = entry.notes;
+      }
     }
 
     if(tags.length){
@@ -2827,6 +3279,41 @@ document.getElementById('menuEdit').onclick = () => {
   // "Neuer Eintrag" öffnen.
   if(entry) openEntryDialog(entry);
 };
+/* Duplikat mit eigenen Anhangs-IDs. Ein flach kopiertes Anhangs-Array würde
+   dieselben IDs teilen; beide Einträge zeigten dann auf denselben
+   verschlüsselten Block und das Löschen des einen beeinflusste den anderen.
+   Deshalb werden die Rohdaten geholt und unter neuen IDs abgelegt — das Duplikat
+   ist damit vollständig unabhängig. */
+async function duplicateEntry(id){
+  const quelle = state.entries.find(e => e.id === id);
+  if(!quelle) return;
+  try{
+    const anhaenge = [];
+    for(const att of (quelle.attachments || [])){
+      const dataB64 = await ensureAttachmentLoaded(att);
+      anhaenge.push({ id: uid(), name: att.name, type: att.type, size: att.size, dataB64 });
+    }
+    const titel = (quelle.title || t('untitled')) + t('copy_suffix');
+    state.entries.push({
+      ...quelle,
+      id: uid(),
+      num: takeNextEntryNum(),
+      title: titel,
+      attachments: anhaenge
+    });
+    addHistory('hist_entry_duplicated', titel);
+    state.dirty = true;
+    renderEntries();
+    showToast(t('toast_entry_duplicated'));
+  }catch(err){
+    // Scheitert nur, wenn ein Anhang nicht entschlüsselt werden kann. Dann
+    // entsteht bewusst kein halbes Duplikat.
+    showToast(t('err_attachment_load') + err.message);
+  }
+}
+
+document.getElementById('menuDuplicate').onclick = () => { duplicateEntry(menuEntryId); };
+
 document.getElementById('menuDelete').onclick = () => {
   const entry = state.entries.find(e => e.id === menuEntryId);
   if(entry && confirm(`„${entry.title || t('untitled')}“ ${t('confirm_delete_entry')}`)){
@@ -2843,13 +3330,34 @@ document.getElementById('menuDelete').onclick = () => {
 
 const entryOverlay = document.getElementById('entryDialogOverlay');
 
+/* Umschalten zwischen Eingabe und Markdown-Vorschau. Nur für Freitext. */
+function setNotesTab(vorschau){
+  document.getElementById('tabNotesEdit').classList.toggle('active', !vorschau);
+  document.getElementById('tabNotesPreview').classList.toggle('active', vorschau);
+  document.getElementById('notesFieldWrap').style.display = vorschau ? 'none' : 'block';
+  const ziel = document.getElementById('notesPreview');
+  ziel.style.display = vorschau ? 'block' : 'none';
+  if(vorschau){
+    renderMarkdownInto(ziel, document.getElementById('entryNotes').value);
+    ziel.setAttribute('data-empty', t('preview_empty'));
+  } else {
+    ziel.textContent = '';
+  }
+}
+document.getElementById('tabNotesEdit').onclick = () => setNotesTab(false);
+document.getElementById('tabNotesPreview').onclick = () => setNotesTab(true);
+
 function setDialogType(type){
   document.querySelectorAll('#typeSelectRow .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.type === type));
   document.getElementById('entryType').value = type;
   document.getElementById('fieldsZugang').style.display = type === 'zugang' ? 'block' : 'none';
   const notesLabel = document.querySelector('#notesFieldWrap label');
   const notesArea = document.getElementById('entryNotes');
-  if(type === 'freitext'){
+  const istFreitext = type === 'freitext';
+  // Vorschau nur bei Freitext, weil nur der als Markdown dargestellt wird.
+  document.getElementById('notesTabs').style.display = istFreitext ? 'flex' : 'none';
+  if(!istFreitext) setNotesTab(false);
+  if(istFreitext){
     notesLabel.textContent = t('content_label');
     notesArea.rows = 8;
   } else {
@@ -3082,7 +3590,7 @@ document.getElementById('btnSaveEntry').onclick = () => {
     totpCodeCache.delete(id);
     addHistory('hist_entry_edited', title);
   } else {
-    state.entries.push({ id: uid(), ...data });
+    state.entries.push({ id: uid(), num: takeNextEntryNum(), ...data });
     addHistory('hist_entry_created', title);
   }
   state.dirty = true;

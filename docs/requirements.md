@@ -2,7 +2,7 @@
 
 **Version:** 1.2.0
 **Stand:** 2026-07-28
-**Status:** Freigegeben. Kapitel 9 hält fest, was automatisiert verifiziert ist und welche vier Punkte manuell offen bleiben.
+**Status:** Im Eigenbetrieb freigegeben. Alle automatisiert prüfbaren Kriterien aus Kapitel 9 sind verifiziert; die verbleibenden erfordern manuelle Durchführung und stehen dort als unmarkierte Kästchen. Diese Zahl wird hier bewusst nicht wiederholt, damit sie nicht veraltet.
 **Autor:** Michael Müller
 
 ---

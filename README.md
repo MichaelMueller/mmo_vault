@@ -2,7 +2,9 @@
 
 **Lokaler Passwortmanager als eine einzige HTML-Datei.** Keine Server, keine Installation, keine Abhängigkeiten — der Vault ist eine verschlüsselte Datei, die dir gehört und die du selbst ablegst.
 
-> **Version 1.2.0** · Funktional vollständig und automatisiert geprüft, inklusive Layout von 320 px bis Desktop. Drei manuelle Abnahmepunkte sind noch offen (Cross-Browser, Tastaturbedienung, Zielumgebungs-Proxy) — siehe [docs/requirements.md](docs/requirements.md#9-abnahmekriterien).
+> **Version 1.2.0** · Funktional vollständig. Alle automatisiert prüfbaren Abnahmekriterien sind verifiziert — Kryptografie gegen die RFC-Testvektoren, Speicher-Roundtrip mit Rollback, Sperrverhalten, Container-Auslieferung und Layout von 320 px bis Desktop.
+>
+> **Sechs Prüfungen erfordern Handarbeit und stehen aus:** Ablauf der Auto-Sperre, Sichtprüfung der Übersetzungen auf Umbrüche, Bedienung allein mit Tastatur, Funktionsprüfung in Firefox und Safari, Ersatzverhalten ohne File System Access API und ohne `BarcodeDetector`, sowie die Prüfung mit dem Reverse Proxy der Zielumgebung. Der jeweils aktuelle Stand steht in [docs/requirements.md](docs/requirements.md#9-abnahmekriterien) als Kästchenliste.
 
 ---
 

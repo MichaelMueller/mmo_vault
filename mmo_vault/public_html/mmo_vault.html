@@ -219,6 +219,11 @@ h1.brand{
 
 .lock-actions{display:flex; flex-direction:column; gap:10px; margin-top:8px;}
 .lock-secondary-row{display:flex; gap:10px; margin-top:14px;}
+/* Die beiden Haupteinstiege stehen untereinander. Nebeneinander bleiben in der
+   auf 420px begrenzten Karte je ~172px übrig — zu wenig für "Neue Datei
+   anlegen", das dann zweizeilig umbricht und ein ungleich hohes Kästchen
+   erzeugt. Auf schmalen Telefonen wurden daraus drei Zeilen. */
+.lock-row-stack{flex-direction:column;}
 .lock-secondary-row .btn{flex:1;}
 .lock-secondary-row .btn-remove{
   flex:0 0 auto; width:44px; padding:0; font-size:16px; line-height:1;
@@ -457,8 +462,11 @@ h1.brand{
 .dialog h3{font-family:var(--font-display); font-weight:700; font-size:16px; letter-spacing:1px; text-transform:uppercase; margin:0 0 20px;}
 .dialog-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:8px;}
 .gen-row{display:flex; gap:8px; align-items:center; margin: -8px 0 18px;}
-.gen-row input[type=range]{flex:1; accent-color: var(--primary);}
-.gen-row span{font-size:12px; color:var(--on-surface-variant); width:26px; text-align:right;}
+/* nowrap + schrumpfbarer Schieberegler: sonst bricht "Generieren" auf schmalen
+   Telefonen zweizeilig um und die Zeile wird unnötig hoch. */
+.gen-row .btn{white-space:nowrap; flex-shrink:0;}
+.gen-row input[type=range]{flex:1; min-width:0; accent-color: var(--primary);}
+.gen-row span{font-size:12px; color:var(--on-surface-variant); width:26px; text-align:right; flex-shrink:0;}
 .check-row{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--on-surface-variant); margin-bottom:4px;}
 .check-row input{accent-color:var(--primary);}
 .pw-eval{height:4px; border-radius:2px; background:var(--outline-variant); margin: -10px 0 18px; overflow:hidden;}
@@ -490,44 +498,65 @@ h1.brand{
 .menu-pop button.danger{color:#ffb4ab;}
 .menu-pop svg{width:15px;height:15px;fill:currentColor;}
 
-.more-menu-wrap{position:relative; display:none; flex-shrink:0;}
-.more-menu-wrap .menu-pop{right:0; left:auto; top:calc(100% + 6px); min-width:220px;}
-.more-menu-wrap .menu-pop button{gap:10px; font-size:13.5px;}
+/* Nur der Auslöse-Button steckt in der Topbar. Backdrop und Sheet liegen
+   bewusst direkt im <body>: die Topbar trägt backdrop-filter, und ein
+   backdrop-filter ungleich none macht ein Element zum containing block für
+   position:fixed. Als Kind der Topbar hätte sich das Sheet an deren Unterkante
+   statt am Viewport ausgerichtet und wäre nach oben aus dem Bild gelaufen. */
+.more-menu-wrap{display:none; flex-shrink:0;}
+
 .more-menu-backdrop{
   display:none; position:fixed; inset:0; background:rgba(6,8,7,.55);
   z-index:150; backdrop-filter: blur(1px);
 }
 .more-menu-backdrop.show{display:block;}
+
+/* "Mehr"-Menü als Bottom-Sheet: volle Breite, am unteren Rand, scrollbar
+   statt einer kleinen Ecken-Dropdown-Liste. */
+#moreMenu{
+  position:fixed; left:0; right:0; top:auto; bottom:0;
+  border-radius: 20px 20px 0 0;
+  min-width:0; width:100%;
+  max-height:70vh; max-height:70dvh; overflow-y:auto;
+  box-shadow: 0 -8px 30px rgba(0,0,0,.5);
+  padding-top:10px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  z-index:200;
+}
+#moreMenu::before{
+  content:""; display:block; width:36px; height:4px; border-radius:2px;
+  background: var(--outline); margin: 2px auto 10px;
+}
+#moreMenu button{padding:14px 20px; font-size:14.5px; gap:10px;}
+
 @media (min-width: 901px){
-  .more-menu-backdrop{display:none !important;}
+  /* Ab hier liegen alle Werkzeuge direkt in der Topbar, das Sheet entfällt. */
+  .more-menu-backdrop, #moreMenu{display:none !important;}
 }
 
 @media (max-width: 900px){
   .topbar-collapsible{display:none !important;}
   .more-menu-wrap{display:block;}
-  /* "Mehr"-Menü wird auf schmalen Bildschirmen zum Bottom-Sheet: volle Breite,
-     am unteren Rand, scrollbar statt einer kleinen Ecken-Dropdown-Liste. */
-  .more-menu-wrap .menu-pop{
-    position:fixed; left:0; right:0; top:auto; bottom:0;
-    border-radius: 20px 20px 0 0;
-    min-width:0; width:100%;
-    max-height:70vh; max-height:70dvh; overflow-y:auto;
-    box-shadow: 0 -8px 30px rgba(0,0,0,.5);
-    padding-top:10px;
-    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-    z-index:200;
-  }
-  .more-menu-wrap .menu-pop::before{
-    content:""; display:block; width:36px; height:4px; border-radius:2px;
-    background: var(--outline); margin: 2px auto 10px;
-  }
-  .more-menu-wrap .menu-pop button{padding:14px 20px; font-size:14.5px;}
 }
 @media (max-width: 560px){
   .content{padding:14px; padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));}
   .entry-grid{grid-template-columns:1fr;}
   .topbar h2{display:none;}
   .current-file-label{max-width:110px;}
+}
+
+/* Schmale Telefone — Sony Xperia & Co. liegen bei 360 CSS-Pixeln. Weniger
+   Innenabstand und ein kleineres Zifferblatt lassen mehr Platz für Text,
+   damit Beschriftungen nicht umbrechen und die Karte nicht unnötig hoch wird. */
+@media (max-width: 430px){
+  #lockScreen{padding:16px;}
+  .lock-card{padding: 32px 20px 24px;}
+  .lock-secondary-row .btn{padding:13px 14px;}
+  .dial{width:72px; height:72px; margin-bottom:16px;}
+  .dial svg{width:28px; height:28px;}
+  .subtitle{margin-bottom:22px;}
+  .dialog{padding: 22px 18px 18px;}
+  .overlay{padding:12px;}
 }
 @media (prefers-reduced-motion: reduce){
   * {transition:none !important;}
@@ -554,7 +583,7 @@ h1.brand{
           <button class="btn btn-tonal" id="btnUseRememberedFile"><span class="remembered-file-label" id="rememberedFileLabel" data-i18n="last_file_default">Letzte Datei laden</span></button>
           <button class="btn btn-outline btn-remove" id="btnForgetRememberedFile" data-i18n-title="forget_link" title="Verknüpfung entfernen">✕</button>
         </div>
-        <div class="lock-secondary-row">
+        <div class="lock-secondary-row lock-row-stack">
           <button class="btn btn-outline" id="btnLoadFile" data-i18n="load_file">Datei laden</button>
           <button class="btn btn-outline" id="btnNewVault" data-i18n="new_file">Neue Datei anlegen</button>
         </div>
@@ -631,16 +660,6 @@ h1.brand{
       <button class="icon-btn more-menu-btn" id="btnMoreMenu" data-i18n-title="more_title" title="Mehr">
         <svg viewBox="0 0 24 24"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"></path></svg>
       </button>
-      <div class="more-menu-backdrop" id="moreMenuBackdrop"></div>
-      <div class="menu-pop" id="moreMenu">
-        <button id="moreLangToggle">🌐 <span id="moreLangLabel">Sprache: DE → EN</span></button>
-        <button id="moreSave">💾 <span data-i18n="save_file_title">Speichern</span> <span class="dirty-dot-inline" id="moreSaveDirtyDot" style="display:none;"></span></button>
-        <button id="moreLock">🔒 <span data-i18n="lock_title">Sperren</span></button>
-        <button id="moreAutoLock">⏱️ <span data-i18n="autolock_title">Auto-Sperre</span></button>
-        <button id="moreChangePassword">🔐 <span data-i18n="change_password_title">Master-Passwort ändern</span></button>
-        <button id="moreHistory">🕐 <span data-i18n="history_title">Änderungsverlauf</span></button>
-        <button id="moreAbout">ℹ️ <span data-i18n="about_title">Über MMO Vault</span></button>
-      </div>
     </div>
   </div>
 
@@ -822,7 +841,7 @@ h1.brand{
       </div>
       <div>
         <h3 id="aboutTitle" style="margin:0;">MMO Vault</h3>
-        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.1.0 · lokaler Passwortmanager</p>
+        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.1.1 · lokaler Passwortmanager</p>
       </div>
     </div>
 
@@ -836,6 +855,20 @@ h1.brand{
       <button class="btn btn-filled" id="btnCloseAbout" data-i18n="close">Schließen</button>
     </div>
   </div>
+</div>
+
+<!-- ============ "Mehr"-Menü (Bottom-Sheet) ============ -->
+<!-- Muss auf Body-Ebene stehen, nicht in der Topbar: deren backdrop-filter
+     würde es zum containing block für position:fixed machen. -->
+<div class="more-menu-backdrop" id="moreMenuBackdrop"></div>
+<div class="menu-pop" id="moreMenu">
+  <button id="moreLangToggle">🌐 <span id="moreLangLabel">Sprache: DE → EN</span></button>
+  <button id="moreSave">💾 <span data-i18n="save_file_title">Speichern</span> <span class="dirty-dot-inline" id="moreSaveDirtyDot" style="display:none;"></span></button>
+  <button id="moreLock">🔒 <span data-i18n="lock_title">Sperren</span></button>
+  <button id="moreAutoLock">⏱️ <span data-i18n="autolock_title">Auto-Sperre</span></button>
+  <button id="moreChangePassword">🔐 <span data-i18n="change_password_title">Master-Passwort ändern</span></button>
+  <button id="moreHistory">🕐 <span data-i18n="history_title">Änderungsverlauf</span></button>
+  <button id="moreAbout">ℹ️ <span data-i18n="about_title">Über MMO Vault</span></button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -930,7 +963,7 @@ const I18N = {
     change_btn: 'Ändern',
     history_h: 'Änderungsverlauf',
     close: 'Schließen',
-    about_version: 'Version 1.1.0 · lokaler Passwortmanager',
+    about_version: 'Version 1.1.1 · lokaler Passwortmanager',
     about_p1: 'Entwickelt von <strong>Michael Müller</strong>. Teil der <strong>MMO</strong>-Toolreihe für Eigenprojekte.',
     about_p2: 'Läuft vollständig lokal im Browser als einzelne HTML-Datei — keine externen Server, keine CDN-Abhängigkeiten, keine Telemetrie, per Content-Security-Policy erzwungen. Verschlüsselung per AES-256-GCM (PBKDF2-SHA256, 600.000 Iterationen), TOTP-2FA nach RFC 6238, QR-Code-Import über die native BarcodeDetector-API.',
     about_p3: 'Keine Garantie, keine Gewährleistung — nutz es auf eigene Verantwortung, wie jedes selbstgebaute Werkzeug. Regelmäßige Backups der Vault-Datei sind Pflicht, nicht optional.',
@@ -1083,7 +1116,7 @@ const I18N = {
     change_btn: 'Change',
     history_h: 'Change history',
     close: 'Close',
-    about_version: 'Version 1.1.0 · local password manager',
+    about_version: 'Version 1.1.1 · local password manager',
     about_p1: 'Developed by <strong>Michael Müller</strong>. Part of the <strong>MMO</strong> tool series for personal projects.',
     about_p2: 'Runs entirely locally in the browser as a single HTML file — no external servers, no CDN dependencies, no telemetry, enforced by a Content Security Policy. Encryption via AES-256-GCM (PBKDF2-SHA256, 600,000 iterations), TOTP 2FA per RFC 6238, QR code import via the native BarcodeDetector API.',
     about_p3: 'No warranty, no guarantee — use at your own risk, like any self-built tool. Regular backups of the vault file are mandatory, not optional.',
@@ -3064,7 +3097,12 @@ document.getElementById('btnMoreMenu').onclick = (e) => {
 };
 moreMenuBackdrop.onclick = closeMoreMenu;
 document.addEventListener('click', (e) => {
-  if(!document.getElementById('moreMenuWrap').contains(e.target)) closeMoreMenu();
+  // Sheet und Auslöser liegen in getrennten Teilbäumen — beide müssen geprüft
+  // werden, sonst würde ein Klick im Sheet es schließen, bevor der Eintrag
+  // seine Aktion ausführen kann.
+  if(document.getElementById('moreMenuWrap').contains(e.target)) return;
+  if(moreMenu.contains(e.target)) return;
+  closeMoreMenu();
 });
 
 document.getElementById('moreLangToggle').onclick = () => {

@@ -2,7 +2,7 @@
 
 **Lokaler Passwortmanager als eine einzige HTML-Datei.** Keine Server, keine Installation, keine Abhängigkeiten — der Vault ist eine verschlüsselte Datei, die dir gehört und die du selbst ablegst.
 
-> **Version 1.1.0** · Funktional vollständig und automatisiert geprüft. Vier manuelle Abnahmepunkte sind noch offen (Cross-Browser, Layout-Sichtprüfung, Tastaturbedienung, Zielumgebungs-Proxy) — siehe [docs/requirements.md](docs/requirements.md#9-abnahmekriterien).
+> **Version 1.1.1** · Funktional vollständig und automatisiert geprüft, inklusive Layout von 320 px bis Desktop. Drei manuelle Abnahmepunkte sind noch offen (Cross-Browser, Tastaturbedienung, Zielumgebungs-Proxy) — siehe [docs/requirements.md](docs/requirements.md#9-abnahmekriterien).
 
 ---
 
@@ -25,12 +25,12 @@ docker compose up -d --build     # → http://127.0.0.1:4080/
 Oder ohne Compose:
 
 ```bash
-docker build -t mmo-vault:1.1.0 .
+docker build -t mmo-vault:1.1.1 .
 docker run -d --name mmo-vault --restart unless-stopped \
   -p 127.0.0.1:4080:8080 \
   --read-only --tmpfs /tmp --cap-drop ALL \
   --security-opt no-new-privileges:true \
-  mmo-vault:1.1.0
+  mmo-vault:1.1.1
 ```
 
 Port und Bind-Adresse lassen sich ohne Änderung der compose.yaml setzen:
@@ -60,7 +60,7 @@ docker compose up -d --build
 Wer auf dem Server nicht bauen will, überträgt stattdessen das fertige Abbild:
 
 ```bash
-docker save mmo-vault:1.1.0 | gzip | ssh server 'gunzip | docker load'
+docker save mmo-vault:1.1.1 | gzip | ssh server 'gunzip | docker load'
 ```
 
 **Start nach dem Reboot** kommt aus `restart: unless-stopped` in der compose.yaml — das greift aber nur, wenn der Docker-Dienst selbst beim Booten startet:

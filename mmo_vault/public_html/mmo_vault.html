@@ -494,6 +494,10 @@ h1.brand{
 }
 .dialog h3{font-family:var(--font-display); font-weight:700; font-size:16px; letter-spacing:1px; text-transform:uppercase; margin:0 0 20px;}
 .dialog-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:8px;}
+/* Drei Wahlmöglichkeiten passen in der 480px breiten Karte nicht nebeneinander
+   und lesen sich untereinander ohnehin klarer. column-reverse, damit die
+   Hauptaktion oben steht, obwohl sie im Markup zuletzt kommt. */
+.dialog-actions.actions-stacked{flex-direction:column-reverse; align-items:stretch; gap:10px;}
 .gen-row{display:flex; gap:8px; align-items:center; margin: -8px 0 18px;}
 /* nowrap + schrumpfbarer Schieberegler: sonst bricht "Generieren" auf schmalen
    Telefonen zweizeilig um und die Zeile wird unnötig hoch. */
@@ -613,6 +617,10 @@ h1.brand{
      Trefferfläche — antippen des Textes schaltet mit. */
   .check-row{min-height:44px; font-size:14px; margin-bottom:0;}
   .check-row input{width:20px; height:20px; flex-shrink:0;}
+  /* Rechtsbündig nebeneinander ergibt bei drei Schaltflächen eine Treppe.
+     column-reverse stellt die Hauptaktion (im Markup zuletzt) nach oben. */
+  .dialog-actions{flex-direction:column-reverse; align-items:stretch; gap:10px;}
+  .dialog-actions .btn{width:100%;}
   .field input, .field select, .field textarea{font-size:16px;}
   .field label{font-size:16px;}
   .field input:focus + label,
@@ -886,6 +894,22 @@ h1.brand{
   </div>
 </div>
 
+<!-- ============ Speichern fehlgeschlagen ============ -->
+<div class="overlay" id="saveFailedOverlay">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="saveFailedTitle">
+    <h3 id="saveFailedTitle" data-i18n="save_failed_h">Speichern fehlgeschlagen</h3>
+    <p style="font-size:13.5px; line-height:1.6; color:var(--on-surface-variant); margin:0 0 12px;" data-i18n="save_failed_text">Die Vault-Datei konnte nicht geschrieben werden. Der vorherige Inhalt der Datei ist unverändert. Du kannst die Daten stattdessen als Download sichern oder einen anderen Speicherort wählen.</p>
+    <p id="saveFailedReason" class="status-msg error" style="text-align:left; font-family:var(--font-mono); font-size:12px;"></p>
+    <!-- Reihenfolge im Markup: Abbrechen, Speicherort, Download. Das Stapeln per
+         column-reverse dreht sie um, sodass die Hauptaktion oben steht. -->
+    <div class="dialog-actions actions-stacked">
+      <button class="btn btn-text" id="btnSaveFallbackCancel" data-i18n="cancel">Abbrechen</button>
+      <button class="btn btn-outline" id="btnSaveFallbackPick" data-i18n="save_fallback_pick">Anderen Speicherort wählen</button>
+      <button class="btn btn-filled" id="btnSaveFallbackDownload" data-i18n="save_fallback_download">Als Download sichern</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ Auto-Sperre ============ -->
 <div class="overlay" id="autoLockOverlay" data-dismissable="true">
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="autoLockTitle">
@@ -927,7 +951,7 @@ h1.brand{
       </div>
       <div>
         <h3 id="aboutTitle" style="margin:0;">MMO Vault</h3>
-        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.2.1 · lokaler Passwortmanager</p>
+        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.3.0 · lokaler Passwortmanager</p>
       </div>
     </div>
 
@@ -1049,7 +1073,7 @@ const I18N = {
     change_btn: 'Ändern',
     history_h: 'Änderungsverlauf',
     close: 'Schließen',
-    about_version: 'Version 1.2.1 · lokaler Passwortmanager',
+    about_version: 'Version 1.3.0 · lokaler Passwortmanager',
     about_p1: 'Entwickelt von <strong>Michael Müller</strong>. Teil der <strong>MMO</strong>-Toolreihe für Eigenprojekte.',
     about_p2: 'Läuft vollständig lokal im Browser als einzelne HTML-Datei — keine externen Server, keine CDN-Abhängigkeiten, keine Telemetrie, per Content-Security-Policy erzwungen. Verschlüsselung per AES-256-GCM (PBKDF2-SHA256, 600.000 Iterationen), TOTP-2FA nach RFC 6238, QR-Code-Import über die native BarcodeDetector-API.',
     about_p3: 'Keine Garantie, keine Gewährleistung — nutz es auf eigene Verantwortung, wie jedes selbstgebaute Werkzeug. Regelmäßige Backups der Vault-Datei sind Pflicht, nicht optional.',
@@ -1113,8 +1137,11 @@ const I18N = {
     toast_pw_changed: 'Master-Passwort geändert und gespeichert.',
     toast_pw_changed_unsaved: 'Passwort im Speicher geändert, aber NICHT gespeichert — die Datei enthält noch das alte Passwort. Bitte erneut speichern.',
     toast_save_cancelled: 'Speichern abgebrochen — die Änderungen stehen noch nicht in der Datei.',
-    err_save_failed: 'Speichern fehlgeschlagen: ',
     err_save_verify: 'Die geschriebene Datei ließ sich nicht verifizieren — vorheriger Stand wiederhergestellt.',
+    save_failed_h: 'Speichern fehlgeschlagen',
+    save_failed_text: 'Die Vault-Datei konnte nicht geschrieben werden. Der vorherige Inhalt der Datei ist unverändert. Du kannst die Daten stattdessen als Download sichern oder einen anderen Speicherort wählen.',
+    save_fallback_download: 'Als Download sichern',
+    save_fallback_pick: 'Anderen Speicherort wählen',
     err_attachment_missing: 'Anhang nicht gefunden.',
     err_attachment_mismatch: 'Anhang gehört nicht zu diesem Eintrag (Datei manipuliert?).',
     err_attachment_load: 'Anhang konnte nicht geladen werden: ',
@@ -1202,7 +1229,7 @@ const I18N = {
     change_btn: 'Change',
     history_h: 'Change history',
     close: 'Close',
-    about_version: 'Version 1.2.1 · local password manager',
+    about_version: 'Version 1.3.0 · local password manager',
     about_p1: 'Developed by <strong>Michael Müller</strong>. Part of the <strong>MMO</strong> tool series for personal projects.',
     about_p2: 'Runs entirely locally in the browser as a single HTML file — no external servers, no CDN dependencies, no telemetry, enforced by a Content Security Policy. Encryption via AES-256-GCM (PBKDF2-SHA256, 600,000 iterations), TOTP 2FA per RFC 6238, QR code import via the native BarcodeDetector API.',
     about_p3: 'No warranty, no guarantee — use at your own risk, like any self-built tool. Regular backups of the vault file are mandatory, not optional.',
@@ -1266,8 +1293,11 @@ const I18N = {
     toast_pw_changed: 'Master password changed and saved.',
     toast_pw_changed_unsaved: 'Password changed in memory but NOT saved — the file still holds the old password. Please save again.',
     toast_save_cancelled: 'Saving cancelled — the changes are not in the file yet.',
-    err_save_failed: 'Saving failed: ',
     err_save_verify: 'The written file could not be verified — the previous state was restored.',
+    save_failed_h: 'Saving failed',
+    save_failed_text: 'The vault file could not be written. The previous content of the file is unchanged. You can save the data as a download instead, or pick a different location.',
+    save_fallback_download: 'Save as download',
+    save_fallback_pick: 'Pick a different location',
     err_attachment_missing: 'Attachment not found.',
     err_attachment_mismatch: 'Attachment does not belong to this entry (file tampered with?).',
     err_attachment_load: 'The attachment could not be loaded: ',
@@ -2017,6 +2047,9 @@ function enterApp(){
    Eintrags-Dialog (position:fixed) samt Klartext-Passwort über dem Sperrbildschirm
    stehen, wenn die Auto-Sperre zuschlägt. */
 function closeAllDialogs(){
+  // Zuerst ein evtl. wartendes Speicher-Versprechen auflösen, sonst bliebe der
+  // Aufrufer von saveToFile() für immer hängen.
+  resolveSaveFallback('cancel');
   document.querySelectorAll('.overlay.show').forEach(el => el.classList.remove('show'));
   entryMenu.classList.remove('show');
   closeMoreMenu();
@@ -2364,6 +2397,53 @@ async function writeVaultToHandle(handle, jsonText){
   }
 }
 
+/* ---------- Rückfalldialog, wenn das Schreiben scheitert ----------
+   Scheitert das Schreiben in die verknüpfte Datei (Datenträger voll, Berechtigung
+   entzogen, Datei durch einen Sync-Client ersetzt), liegen die Änderungen nur noch
+   im Speicher. Statt sie dort zu lassen, wird ein Ausweg angeboten. Bewusst als
+   Rückfrage und nicht als automatischer Download — sonst landet unerwartet eine
+   Datei im Download-Ordner. */
+
+const saveFailedOverlay = document.getElementById('saveFailedOverlay');
+let saveFallbackResolve = null;
+
+function askSaveFallback(reason){
+  return new Promise(resolve => {
+    saveFallbackResolve = resolve;
+    document.getElementById('saveFailedReason').textContent = reason || '';
+    saveFailedOverlay.classList.add('show');
+  });
+}
+
+/* Muss von jedem Weg aufgerufen werden, der den Dialog schließt — auch von
+   Escape und vom Sperren. Bleibt das Versprechen offen, wartet saveToFile()
+   endlos und der Aufrufer erfährt nie, ob gespeichert wurde. */
+function resolveSaveFallback(choice){
+  if(!saveFallbackResolve) return false;
+  saveFailedOverlay.classList.remove('show');
+  const resolve = saveFallbackResolve;
+  saveFallbackResolve = null;
+  resolve(choice);
+  return true;
+}
+
+document.getElementById('btnSaveFallbackDownload').onclick = () => resolveSaveFallback('download');
+document.getElementById('btnSaveFallbackPick').onclick = () => resolveSaveFallback('pick');
+document.getElementById('btnSaveFallbackCancel').onclick = () => resolveSaveFallback('cancel');
+
+async function offerSaveFallback(jsonText, reason){
+  const choice = await askSaveFallback(reason);
+  if(choice === 'download') return downloadVaultFile(jsonText);
+  if(choice === 'pick'){
+    // Handle verwerfen und erneut speichern — saveToFile() fragt dann nach einem
+    // neuen Ort. Nötig, weil ein durch Sync ersetztes Handle dauerhaft tot ist.
+    state.fileHandle = null;
+    document.getElementById('currentFileLabel').textContent = '';
+    return saveToFile();
+  }
+  return false; // Abbrechen: "ungespeichert" bleibt stehen
+}
+
 function downloadVaultFile(jsonText){
   const blob = new Blob([jsonText], {type:'application/json'});
   const url = URL.createObjectURL(blob);
@@ -2407,8 +2487,8 @@ async function saveToFile(){
         refreshRememberedFileButton();
         return downloadVaultFile(jsonText);
       }
-      showToast(t('err_save_failed') + (err.message || err.name));
-      return false;
+      // Auswahldialog nicht öffenbar — auch hier den Ausweg anbieten.
+      return offerSaveFallback(jsonText, err.message || err.name);
     }
   }
 
@@ -2425,8 +2505,9 @@ async function saveToFile(){
       refreshRememberedFileButton();
       return downloadVaultFile(jsonText);
     }
-    showToast(t('err_save_failed') + (err.message || err.name));
-    return false;
+    // Die Datei selbst ist durch writeVaultToHandle() zurückgerollt, die
+    // Änderungen liegen aber nur im Speicher — Download oder neuen Ort anbieten.
+    return offerSaveFallback(jsonText, err.message || err.name);
   }
 }
 
@@ -3140,6 +3221,9 @@ const DIALOG_CLOSE_ORDER = [
 function closeTopmostDialog(){
   if(entryMenu.classList.contains('show')){ entryMenu.classList.remove('show'); return true; }
   if(moreMenu.classList.contains('show')){ closeMoreMenu(); return true; }
+  // Vor allen anderen: der Rückfalldialog hält ein Versprechen offen, das beim
+  // Schließen aufgelöst werden muss. Escape zählt als Abbrechen.
+  if(resolveSaveFallback('cancel')) return true;
   for(const id of DIALOG_CLOSE_ORDER){
     const el = document.getElementById(id);
     if(el && el.classList.contains('show')){ el.classList.remove('show'); return true; }

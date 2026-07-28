@@ -1,6 +1,6 @@
 # MMO Vault — Anforderungsspezifikation
 
-**Version:** 1.2.1
+**Version:** 1.3.0
 **Stand:** 2026-07-28
 **Status:** Im Eigenbetrieb freigegeben. Alle automatisiert prüfbaren Kriterien aus Kapitel 9 sind verifiziert; die verbleibenden erfordern manuelle Durchführung und stehen dort als unmarkierte Kästchen. Diese Zahl wird hier bewusst nicht wiederholt, damit sie nicht veraltet.
 **Autor:** Michael Müller
@@ -11,7 +11,7 @@
 
 MMO Vault ist ein lokaler Passwortmanager, der vollständig als **eine einzelne HTML-Datei** ausgeliefert wird und ausschließlich im Browser des Anwenders läuft. Er verwaltet Zugangsdaten, Freitext-Notizen, 2FA-Secrets und Dateianhänge in einer verschlüsselten Datei, die der Anwender selbst besitzt und ablegt.
 
-Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.2.1. Es richtet sich an Entwicklung, Review und Abnahme.
+Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.3.0. Es richtet sich an Entwicklung, Review und Abnahme.
 
 ### 1.1 Nicht im Geltungsbereich
 
@@ -183,6 +183,10 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 | FUN-37 | Schlägt Schreiben oder Verifikation fehl, MUSS der vorherige Dateiinhalt wiederhergestellt und der Zustand „ungespeichert" beibehalten werden. |
 | FUN-38 | „Ungespeichert" DARF erst zurückgesetzt werden, wenn das Schreiben bestätigt ist. Folgeaktionen (Sperren, Melden eines Passwortwechsels) MÜSSEN sich auf dieses Ergebnis stützen. |
 | FUN-39 | Scheitert das Speichern nach einem Passwortwechsel, MUSS ausdrücklich darauf hingewiesen werden, dass die Datei noch das alte Passwort trägt. |
+| FUN-39a | Scheitert das Schreiben in die verknüpfte Datei, MUSS die Anwendung einen Ausweg anbieten: die Daten als Download sichern oder einen anderen Speicherort wählen. Ohne das lägen die Änderungen nur noch im Speicher. |
+| FUN-39b | Dieser Ausweg MUSS als Rückfrage erscheinen und DARF NICHT ungefragt herunterladen. Der Grund des Fehlschlags MUSS im Dialog stehen. |
+| FUN-39c | Wird „anderen Speicherort" gewählt, MUSS das bisherige Datei-Handle verworfen werden. Ein durch einen Sync-Client ersetztes Handle bleibt sonst dauerhaft unbrauchbar. |
+| FUN-39d | Jeder Weg, der den Rückfalldialog schließt — Schaltfläche, Escape, Sperren — MUSS die wartende Speicheroperation auflösen. Ein offenes Versprechen ließe den Aufrufer endlos warten. |
 
 ### 4.6 Änderungsverlauf
 
@@ -318,6 +322,9 @@ Abgehakte Punkte sind nachweisbar geprüft — die Krypto-, Datenintegritäts-, 
 - [x] Fehlgeschlagenes Schreiben stellt den vorherigen Dateiinhalt wieder her
 - [x] Abgeschnittener Schreibvorgang wird durch Rückverifikation erkannt und zurückgerollt
 - [x] Erfolgreiches Speichern erzeugt eine wieder ladbare Datei und setzt „ungespeichert" zurück
+- [x] Nach einem fehlgeschlagenen Schreibvorgang erscheint der Rückfalldialog mit dem Fehlergrund; „als Download sichern" persistiert die Daten, „anderen Speicherort" schreibt an den neu gewählten Ort und lässt die alte Datei unangetastet, „Abbrechen" behält „ungespeichert"
+- [x] Escape und Sperren lösen den wartenden Speichervorgang auf, statt ihn hängen zu lassen
+- [x] Im Ablauf „Speichern & Sperren" wird nach dem Rettungs-Download gesperrt, nach „Abbrechen" nicht
 - [x] Roundtrip Anlegen → Speichern → Laden → Entschlüsseln erhält alle Feldwerte inklusive TOTP-Parameter
 - [x] Anhänge werden lazy nachgeladen und liegen nicht im Textblock
 

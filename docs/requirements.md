@@ -1,6 +1,6 @@
 # MMO Vault — Anforderungsspezifikation
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 **Stand:** 2026-07-28
 **Status:** Im Eigenbetrieb freigegeben. Alle automatisiert prüfbaren Kriterien aus Kapitel 9 sind verifiziert; die verbleibenden erfordern manuelle Durchführung und stehen dort als unmarkierte Kästchen. Diese Zahl wird hier bewusst nicht wiederholt, damit sie nicht veraltet.
 **Autor:** Michael Müller
@@ -11,7 +11,7 @@
 
 MMO Vault ist ein lokaler Passwortmanager, der vollständig als **eine einzelne HTML-Datei** ausgeliefert wird und ausschließlich im Browser des Anwenders läuft. Er verwaltet Zugangsdaten, Freitext-Notizen, 2FA-Secrets und Dateianhänge in einer verschlüsselten Datei, die der Anwender selbst besitzt und ablegt.
 
-Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.5.0. Es richtet sich an Entwicklung, Review und Abnahme.
+Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.6.0. Es richtet sich an Entwicklung, Review und Abnahme.
 
 ### 1.1 Nicht im Geltungsbereich
 
@@ -151,6 +151,8 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 | FUN-17c | Die Nummer MUSS auf der Karte sichtbar sein und beim Antippen den zugehörigen Suchausdruck in die Zwischenablage legen. |
 | FUN-17d | Die Suche MUSS Feldfilter der Form `schlüssel=wert` unterstützen, mindestens `id`, `tag`, `typ`, `benutzer`, `titel`. Mehrere Filter und freie Begriffe verknüpfen mit UND, ebenso mit den Filter-Chips. Ein unbekannter Schlüssel MUSS als Volltext behandelt werden, damit nichts stillschweigend wegfällt. |
 | FUN-17e | `id=` MUSS sowohl die fortlaufende Nummer (mit und ohne `#`) als auch die interne ID akzeptieren. |
+| FUN-17j | Feldwerte MÜSSEN in Anführungszeichen (einfach oder doppelt) stehen dürfen, damit Werte mit Leerzeichen möglich sind. Ein Zitat ohne Schlüssel ergibt eine Phrasensuche. |
+| FUN-17k | Ein nicht geschlossenes Anführungszeichen DARF die Suche nicht stören. Die Suche läuft bei jedem Tastendruck; während des Tippens ist das Zitat zwangsläufig eine Zeit lang offen. |
 | FUN-17f | Ein Suchausdruck KANN über das Adress-Fragment `#search=…` vorbelegt werden. Er MUSS ausschließlich das Suchfeld füllen — kein Entsperren, kein Öffnen eines Eintrags, nichts Zustandsänderndes. Nach dem Anwenden MUSS er aus der Adresse entfernt werden. |
 | FUN-17g | Für diesen Zweck DARF KEIN Query-String verwendet werden. Query-Strings werden an den Server übertragen und landen im Zugriffsprotokoll; ein Suchbegriff ist hier typischerweise ein Kontoname. Fragmente werden nie gesendet. |
 | FUN-17h | Ein Eintrag MUSS duplizierbar sein. Das Duplikat MUSS eine neue ID und Nummer erhalten und **eigene Anhangs-IDs mit eigenen Kopien der Rohdaten**. Gemeinsam genutzte Anhangs-IDs sind unzulässig, weil beide Einträge dann auf denselben verschlüsselten Block zeigen und das Löschen des einen den anderen beeinflusst. |
@@ -375,6 +377,7 @@ Abgehakte Punkte sind nachweisbar geprüft — die Krypto-, Datenintegritäts-, 
 
 - [x] Einträge ohne Nummer erhalten beim Entsperren welche in Anlagereihenfolge; der Zähler wird gespeichert und nach dem Löschen des höchsten Eintrags nicht erneut vergeben
 - [x] Suchsyntax geprüft: `id=1`, `id=#2`, `id=<interne-id>`, `tag=`, `typ=`, `benutzer=`, `titel=`, Kombination `id=1 nextcloud` (Treffer) und `id=1 bank` (kein Treffer), unbekannter Schlüssel bleibt Volltext
+- [x] Zitierte Werte geprüft: `tag="mein tag"`, `tag='mein tag'`, `titel="deutsche bank"`, `benutzer="kunde 42"`, Phrasensuche `"zwei wörter"`, Kombination mit weiteren Filtern, sowie ein nicht geschlossenes Zitat (bricht nicht)
 - [x] `#search=id%3D2` belegt das Suchfeld vor, filtert auf den passenden Eintrag und wird aus der Adresszeile entfernt
 - [x] Duplikat erhält neue ID, neue Nummer, Titelzusatz und eigene Anhangs-IDs; die Datei enthält danach zwei getrennte Blöcke, und das Löschen des Originals lässt den Anhang des Duplikats lesbar
 - [x] Markdown-Renderer erzeugt Überschriften, fett, kursiv, Code, Code-Block, beide Listenarten, Zitat, Trennlinie und Links

@@ -2,7 +2,7 @@
 
 **Lokaler Passwortmanager als eine einzige HTML-Datei.** Keine Server, keine Installation, keine Abhängigkeiten — der Vault ist eine verschlüsselte Datei, die dir gehört und die du selbst ablegst.
 
-> **Version 1.5.0** · Funktional vollständig. Alle automatisiert prüfbaren Abnahmekriterien sind verifiziert — Kryptografie gegen die RFC-Testvektoren, Speicher-Roundtrip mit Rollback, Sperrverhalten, Container-Auslieferung und Layout von 320 px bis Desktop.
+> **Version 1.6.0** · Funktional vollständig. Alle automatisiert prüfbaren Abnahmekriterien sind verifiziert — Kryptografie gegen die RFC-Testvektoren, Speicher-Roundtrip mit Rollback, Sperrverhalten, Container-Auslieferung und Layout von 320 px bis Desktop.
 >
 > **Sechs Prüfungen erfordern Handarbeit und stehen aus:** Ablauf der Auto-Sperre, Sichtprüfung der Übersetzungen auf Umbrüche, Bedienung allein mit Tastatur, Funktionsprüfung in Firefox und Safari, Ersatzverhalten ohne File System Access API und ohne `BarcodeDetector`, sowie die Prüfung mit dem Reverse Proxy der Zielumgebung. Der jeweils aktuelle Stand steht in [docs/requirements.md](docs/requirements.md#9-abnahmekriterien) als Kästchenliste.
 
@@ -27,12 +27,12 @@ docker compose up -d --build     # → http://127.0.0.1:4080/
 Oder ohne Compose:
 
 ```bash
-docker build -t mmo-vault:1.5.0 .
+docker build -t mmo-vault:1.6.0 .
 docker run -d --name mmo-vault --restart unless-stopped \
   -p 127.0.0.1:4080:8080 \
   --read-only --tmpfs /tmp --cap-drop ALL \
   --security-opt no-new-privileges:true \
-  mmo-vault:1.5.0
+  mmo-vault:1.6.0
 ```
 
 Port und Bind-Adresse lassen sich ohne Änderung der compose.yaml setzen:
@@ -62,7 +62,7 @@ docker compose up -d --build
 Wer auf dem Server nicht bauen will, überträgt stattdessen das fertige Abbild:
 
 ```bash
-docker save mmo-vault:1.5.0 | gzip | ssh server 'gunzip | docker load'
+docker save mmo-vault:1.6.0 | gzip | ssh server 'gunzip | docker load'
 ```
 
 **Start nach dem Reboot** kommt aus `restart: unless-stopped` in der compose.yaml — das greift aber nur, wenn der Docker-Dienst selbst beim Booten startet:
@@ -117,7 +117,7 @@ Der Server sieht nur die Anwendungsdatei. Vault-Dateien liegen weiter ausschlie�
 - **Zwei Eintragstypen** — Zugang (URL, Benutzername, Passwort, 2FA, Notizen) und Freitext
 - **2FA/TOTP** nach RFC 6238, inklusive 8-stelliger sowie SHA-256/SHA-512-Konten. QR-Codes lassen sich als Bild importieren, über die native `BarcodeDetector`-API
 - **Dateianhänge** in eigenen verschlüsselten Blöcken — sie werden erst beim Herunterladen entschlüsselt, nicht schon beim Entsperren
-- **Tags, Volltextsuche und Typfilter**, dazu Feldfilter in der Suche: `id=42`, `tag=arbeit`, `typ=freitext`, `benutzer=admin`, `titel=bank` — beliebig kombinierbar
+- **Tags, Volltextsuche und Typfilter**, dazu Feldfilter in der Suche: `id=42`, `tag=arbeit`, `typ=freitext`, `benutzer=admin`, `titel=bank` — beliebig kombinierbar. Werte mit Leerzeichen in Anführungszeichen: `tag="mein tag"`; ein Zitat ohne Schlüssel sucht die Phrase
 - **Fortlaufende Eintragsnummer** auf jeder Karte; Antippen kopiert den Suchausdruck
 - **Deep-Link** über `#search=id%3D42` — als Fragment, damit der Suchbegriff nicht im Serverlog landet
 - **Einträge duplizieren**, inklusive eigenständiger Kopien der Anhänge

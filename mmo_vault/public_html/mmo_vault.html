@@ -785,19 +785,26 @@ h1.brand{
     </div>
 
     <div id="createView" style="display:none;">
-      <div class="field">
-        <input type="password" id="newPassword" placeholder=" " autocomplete="new-password">
-        <label for="newPassword" data-i18n="new_master_password">Neues Master-Passwort</label>
-      </div>
-      <div class="field">
-        <input type="password" id="newPasswordConfirm" placeholder=" " autocomplete="new-password">
-        <label for="newPasswordConfirm" data-i18n="confirm_master_password">Master-Passwort bestätigen</label>
-      </div>
-      <div class="pw-eval"><div class="pw-eval-fill" id="pwEvalFill"></div></div>
-      <div class="lock-actions">
-        <button class="btn btn-filled btn-block" id="btnCreateVault" data-i18n="create_vault">Vault erstellen</button>
-        <button class="btn btn-text" id="btnBackToUnlock" data-i18n="back">Zurück</button>
-      </div>
+      <!-- Ebenfalls ein echtes Formular: nur so kann ein Passwortmanager das
+           neu vergebene Master-Passwort zum Speichern anbieten. -->
+      <form id="createForm">
+        <input type="text" id="createUser" name="username" autocomplete="username"
+               tabindex="-1" aria-hidden="true" readonly
+               style="position:absolute; left:-9999px; width:1px; height:1px; opacity:0;">
+        <div class="field">
+          <input type="password" id="newPassword" name="new-password" placeholder=" " autocomplete="new-password">
+          <label for="newPassword" data-i18n="new_master_password">Neues Master-Passwort</label>
+        </div>
+        <div class="field">
+          <input type="password" id="newPasswordConfirm" name="new-password-confirm" placeholder=" " autocomplete="new-password">
+          <label for="newPasswordConfirm" data-i18n="confirm_master_password">Master-Passwort bestätigen</label>
+        </div>
+        <div class="pw-eval"><div class="pw-eval-fill" id="pwEvalFill"></div></div>
+        <div class="lock-actions">
+          <button type="submit" class="btn btn-filled btn-block" id="btnCreateVault" data-i18n="create_vault">Vault erstellen</button>
+          <button type="button" class="btn btn-text" id="btnBackToUnlock" data-i18n="back">Zurück</button>
+        </div>
+      </form>
     </div>
 
     <p class="hint" id="fsaHint">Dein Browser unterstützt direktes Speichern in eine Datei. Beim ersten Speichern wirst du nach einem Speicherort gefragt.</p>
@@ -964,25 +971,33 @@ h1.brand{
 <div class="overlay" id="changePasswordOverlay">
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="changePasswordTitle">
     <h3 id="changePasswordTitle" data-i18n="change_password_h">Master-Passwort ändern</h3>
+    <!-- Als Formular, damit ein Passwortmanager den gespeicherten Eintrag
+         aktualisieren kann. Ohne das bliebe dort nach einem Wechsel das alte
+         Passwort stehen und das automatische Ausfüllen schlüge fehl. -->
+    <form id="changePasswordForm">
+    <input type="text" id="cpUser" name="username" autocomplete="username"
+           tabindex="-1" aria-hidden="true" readonly
+           style="position:absolute; left:-9999px; width:1px; height:1px; opacity:0;">
     <div class="field">
-      <input type="password" id="cpCurrentPassword" placeholder=" " autocomplete="current-password">
+      <input type="password" id="cpCurrentPassword" name="current-password" placeholder=" " autocomplete="current-password">
       <label for="cpCurrentPassword" data-i18n="current_master_password">Aktuelles Master-Passwort</label>
     </div>
     <div class="field">
-      <input type="password" id="cpNewPassword" placeholder=" " autocomplete="new-password">
+      <input type="password" id="cpNewPassword" name="new-password" placeholder=" " autocomplete="new-password">
       <label for="cpNewPassword" data-i18n="new_master_password">Neues Master-Passwort</label>
     </div>
     <div class="field">
-      <input type="password" id="cpNewPasswordConfirm" placeholder=" " autocomplete="new-password">
+      <input type="password" id="cpNewPasswordConfirm" name="new-password-confirm" placeholder=" " autocomplete="new-password">
       <label for="cpNewPasswordConfirm" data-i18n="confirm_new_master_password">Neues Master-Passwort bestätigen</label>
     </div>
     <div class="pw-eval"><div class="pw-eval-fill" id="cpEvalFill"></div></div>
     <div id="cpStatus" class="status-msg"></div>
     <p class="hint" data-i18n="change_password_hint" style="text-align:left; margin:4px 0 0;">Nach der Änderung wird der Vault sofort mit dem neuen Passwort neu verschlüsselt und automatisch als Datei gespeichert.</p>
     <div class="dialog-actions">
-      <button class="btn btn-text" id="btnCancelChangePassword" data-i18n="cancel">Abbrechen</button>
-      <button class="btn btn-filled" id="btnConfirmChangePassword" data-i18n="change_btn">Ändern</button>
+      <button type="button" class="btn btn-text" id="btnCancelChangePassword" data-i18n="cancel">Abbrechen</button>
+      <button type="submit" class="btn btn-filled" id="btnConfirmChangePassword" data-i18n="change_btn">Ändern</button>
     </div>
+    </form>
   </div>
 </div>
 
@@ -1108,7 +1123,7 @@ h1.brand{
       </div>
       <div>
         <h3 id="aboutTitle" style="margin:0;">MMO Vault</h3>
-        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.7.0 · lokaler Passwortmanager</p>
+        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.7.1 · lokaler Passwortmanager</p>
       </div>
     </div>
 
@@ -1269,7 +1284,7 @@ const I18N = {
     change_btn: 'Ändern',
     history_h: 'Änderungsverlauf',
     close: 'Schließen',
-    about_version: 'Version 1.7.0 · lokaler Passwortmanager',
+    about_version: 'Version 1.7.1 · lokaler Passwortmanager',
     about_p1: 'Entwickelt von <strong>Michael Müller</strong>. Teil der <strong>MMO</strong>-Toolreihe für Eigenprojekte.',
     about_p2: 'Läuft vollständig lokal im Browser als einzelne HTML-Datei — keine externen Server, keine CDN-Abhängigkeiten, keine Telemetrie, per Content-Security-Policy erzwungen. Verschlüsselung per AES-256-GCM (PBKDF2-SHA256, 600.000 Iterationen), TOTP-2FA nach RFC 6238, QR-Code-Import über die native BarcodeDetector-API.',
     about_p3: 'Keine Garantie, keine Gewährleistung — nutz es auf eigene Verantwortung, wie jedes selbstgebaute Werkzeug. Regelmäßige Backups der Vault-Datei sind Pflicht, nicht optional.',
@@ -1463,7 +1478,7 @@ const I18N = {
     change_btn: 'Change',
     history_h: 'Change history',
     close: 'Close',
-    about_version: 'Version 1.7.0 · local password manager',
+    about_version: 'Version 1.7.1 · local password manager',
     about_p1: 'Developed by <strong>Michael Müller</strong>. Part of the <strong>MMO</strong> tool series for personal projects.',
     about_p2: 'Runs entirely locally in the browser as a single HTML file — no external servers, no CDN dependencies, no telemetry, enforced by a Content Security Policy. Encryption via AES-256-GCM (PBKDF2-SHA256, 600,000 iterations), TOTP 2FA per RFC 6238, QR code import via the native BarcodeDetector API.',
     about_p3: 'No warranty, no guarantee — use at your own risk, like any self-built tool. Regular backups of the vault file are mandatory, not optional.',
@@ -2227,6 +2242,10 @@ function setLockStatus(msg, type){
 }
 
 function showCreateView(){
+  // Kennung fuer den Passwortmanager, damit ein neu vergebenes Master-Passwort
+  // zuordenbar abgelegt werden kann.
+  document.getElementById('createUser').value =
+    (state.fileHandle && state.fileHandle.name) || 'mmo-vault';
   document.getElementById('unlockView').style.display = 'none';
   document.getElementById('createView').style.display = 'block';
   setLockStatus('', '');
@@ -2259,7 +2278,10 @@ function bindPasswordMeter(inputId, fillId){
 }
 bindPasswordMeter('newPassword', 'pwEvalFill');
 
-document.getElementById('btnCreateVault').onclick = async () => {
+/* Als submit statt onclick: ein Klick auf einen Absende-Knopf loest ohnehin
+   submit aus, beide Wege zusammen wuerden den Handler doppelt ausfuehren. */
+document.getElementById('createForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
   const pw = document.getElementById('newPassword').value;
   const pw2 = document.getElementById('newPasswordConfirm').value;
   if(pw.length < 8){ setLockStatus(t('err_pw_min'), 'error'); return; }
@@ -2283,7 +2305,7 @@ document.getElementById('btnCreateVault').onclick = async () => {
   document.getElementById('pwEvalFill').style.width = '0%';
   enterApp();
   showToast(t('toast_vault_created'));
-};
+});
 
 /* Das Entsperren laeuft ueber das submit-Ereignis des Formulars, nicht ueber
    einen Klick-Handler. Nur so loest auch die Eingabetaste aus und der Browser
@@ -2838,6 +2860,8 @@ document.getElementById('autoLockSelect').addEventListener('change', (e) => {
 const changePasswordOverlay = document.getElementById('changePasswordOverlay');
 
 function openChangePasswordDialog(){
+  document.getElementById('cpUser').value =
+    (state.fileHandle && state.fileHandle.name) || 'mmo-vault';
   document.getElementById('cpCurrentPassword').value = '';
   document.getElementById('cpNewPassword').value = '';
   document.getElementById('cpNewPasswordConfirm').value = '';
@@ -2863,7 +2887,8 @@ function setCpStatus(msg, type){
   el.className = 'status-msg' + (msg ? ' ' + type : '');
 }
 
-document.getElementById('btnConfirmChangePassword').onclick = async () => {
+document.getElementById('changePasswordForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
   const currentPw = document.getElementById('cpCurrentPassword').value;
   const newPw = document.getElementById('cpNewPassword').value;
   const newPw2 = document.getElementById('cpNewPasswordConfirm').value;
@@ -2907,7 +2932,7 @@ document.getElementById('btnConfirmChangePassword').onclick = async () => {
   }catch(err){
     setCpStatus(t('err_reencrypt_failed') + err.message, 'error');
   }
-};
+});
 
 /* ---------- Speichern (Datei) ---------- */
 

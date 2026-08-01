@@ -1,6 +1,6 @@
 # MMO Vault — Anforderungsspezifikation
 
-**Version:** 1.7.0
+**Version:** 1.7.1
 **Stand:** 2026-07-28
 **Status:** Im Eigenbetrieb freigegeben. Alle automatisiert prüfbaren Kriterien aus Kapitel 9 sind verifiziert; die verbleibenden erfordern manuelle Durchführung und stehen dort als unmarkierte Kästchen. Diese Zahl wird hier bewusst nicht wiederholt, damit sie nicht veraltet.
 **Autor:** Michael Müller
@@ -11,7 +11,7 @@
 
 MMO Vault ist ein lokaler Passwortmanager, der vollständig als **eine einzelne HTML-Datei** ausgeliefert wird und ausschließlich im Browser des Anwenders läuft. Er verwaltet Zugangsdaten, Freitext-Notizen, 2FA-Secrets und Dateianhänge in einer verschlüsselten Datei, die der Anwender selbst besitzt und ablegt.
 
-Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.7.0. Es richtet sich an Entwicklung, Review und Abnahme.
+Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.7.1. Es richtet sich an Entwicklung, Review und Abnahme.
 
 ### 1.1 Nicht im Geltungsbereich
 
@@ -231,6 +231,8 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 | FUN-62 | Das Entsperr-Feld MUSS in einem echten `<form>` mit Absende-Ereignis und einem Kennungsfeld liegen, damit Passwortmanager das Master-Passwort anbieten können. Die Anwendung selbst speichert dabei nichts; ob und wo gespeichert wird, entscheidet allein der Browser bzw. der Anwender. |
 | FUN-63 | Das Absenden MUSS unterbunden werden (`preventDefault`), sonst lädt die Seite neu und ein entsperrter Zustand geht verloren. |
 | FUN-64 | Das Kennungsfeld SOLL den Dateinamen tragen, damit ein gespeicherter Eintrag zuordenbar ist. |
+| FUN-64a | Dasselbe gilt für „Vault erstellen" und „Master-Passwort ändern". Ohne Formular kann ein Passwortmanager ein neu vergebenes Passwort nicht anbieten und einen bereits gespeicherten Eintrag nach einem Wechsel nicht aktualisieren — dort stünde sonst dauerhaft das alte Passwort. |
+| FUN-64b | Abbrechen- und Zurück-Schaltflächen in diesen Formularen MÜSSEN `type="button"` tragen, sonst lösen sie ein Absenden aus. |
 | FUN-65 | Einträge MÜSSEN aus einer CSV-Datei importierbar sein, für beide Eintragstypen. |
 | FUN-66 | Die Spaltennamen sind **fest** und MÜSSEN im Import-Dialog selbst dokumentiert sein: `titel` (Pflicht), `typ`, `url`, `benutzer`, `passwort`, `totp`, `notizen`, `tags`. Englische Entsprechungen gelten ebenso. Reihenfolge beliebig, unbekannte Spalten werden ignoriert, fehlende bleiben leer. |
 | FUN-67 | Eine Vorlagendatei MUSS herunterladbar sein, mit Semikolon und BOM, damit deutsches Excel sie samt Umlauten direkt korrekt öffnet. |
@@ -407,6 +409,8 @@ Abgehakte Punkte sind nachweisbar geprüft — die Krypto-, Datenintegritäts-, 
 
 - [x] Entsperr-Feld liegt in einem `<form>`, Knopf ist `type="submit"`, Kennungs- und Passwortfeld tragen die passenden `autocomplete`-Werte
 - [x] Das Absende-Ereignis ruft den Entsperr-Vorgang und lädt die Seite nicht neu
+- [x] Alle sechs Passwortfelder liegen in einem Formular; Konsole beim Laden vollständig leer
+- [x] Anlegen und Passwortwechsel laufen über das Absende-Ereignis; nach dem Wechsel ist die Datei mit dem neuen Passwort lesbar
 - [x] CSV-Parser geprüft: Komma, Semikolon, zitierte Trennzeichen, verdoppelte Quotes, eingebettete Zeilenumbrüche, CRLF, Leerzeilen
 - [x] Trennzeichen-Erkennung für Komma, Semikolon und Tabulator
 - [x] Import geprüft: beide Typen, Standardtyp bei fehlender Spalte, Tags, englische Spaltennamen, Zeile ohne Titel, Dublette mit und ohne Überspringen, Verlaufseintrag, leere Zugangsfelder bei Freitext

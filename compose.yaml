@@ -16,7 +16,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: mmo-vault:1.7.0
+    image: mmo-vault:1.7.1
     container_name: mmo-vault
     # Startet nach einem Reboot automatisch wieder — vorausgesetzt, der
     # Docker-Dienst selbst ist aktiviert (systemctl enable docker).

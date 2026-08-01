@@ -1,6 +1,6 @@
 # MMO Vault — Anforderungsspezifikation
 
-**Version:** 1.6.0
+**Version:** 1.7.0
 **Stand:** 2026-07-28
 **Status:** Im Eigenbetrieb freigegeben. Alle automatisiert prüfbaren Kriterien aus Kapitel 9 sind verifiziert; die verbleibenden erfordern manuelle Durchführung und stehen dort als unmarkierte Kästchen. Diese Zahl wird hier bewusst nicht wiederholt, damit sie nicht veraltet.
 **Autor:** Michael Müller
@@ -11,7 +11,7 @@
 
 MMO Vault ist ein lokaler Passwortmanager, der vollständig als **eine einzelne HTML-Datei** ausgeliefert wird und ausschließlich im Browser des Anwenders läuft. Er verwaltet Zugangsdaten, Freitext-Notizen, 2FA-Secrets und Dateianhänge in einer verschlüsselten Datei, die der Anwender selbst besitzt und ablegt.
 
-Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.6.0. Es richtet sich an Entwicklung, Review und Abnahme.
+Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.7.0. Es richtet sich an Entwicklung, Review und Abnahme.
 
 ### 1.1 Nicht im Geltungsbereich
 
@@ -20,7 +20,8 @@ Ausdrücklich **nicht** Bestandteil dieser Version:
 - Server-, Cloud- oder Synchronisationskomponente jeder Art
 - Mehrbenutzer-, Freigabe- oder Rechteverwaltung
 - Browser-Erweiterung, Autofill in fremden Seiten, Zwischenablage-Überwachung
-- Import aus anderen Passwortmanagern (KeePass, 1Password, Bitwarden, CSV)
+- Direkter Import der proprietären Exportformate anderer Passwortmanager (KeePass-XML, 1Password-1PUX). Ein CSV-Import mit festen Spaltennamen ist seit 1.7.0 enthalten (FUN-65 ff.); Exporte anderer Werkzeuge müssen vorher auf diese Spaltennamen gebracht werden.
+- Export in irgendein Format
 - Passwort-Historie pro Eintrag, Ablaufdatum, Breach-Abgleich
 - HOTP (zählerbasierte Einmalpasswörter)
 - Automatische Backup-Rotation oder Versionierung der Vault-Datei
@@ -223,6 +224,22 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 | FUN-51 | Eingabefelder MÜSSEN auf Touch-Geräten mindestens 16 px Schriftgröße haben, damit iOS beim Fokussieren nicht in die Seite zoomt. |
 | FUN-52 | Die Kopfleiste MUSS links eine Bildmarke tragen, die auch dann sichtbar bleibt, wenn der Schriftzug auf schmalen Bildschirmen entfällt. |
 
+### 4.9 Entsperren und CSV-Import
+
+| ID | Anforderung |
+|---|---|
+| FUN-62 | Das Entsperr-Feld MUSS in einem echten `<form>` mit Absende-Ereignis und einem Kennungsfeld liegen, damit Passwortmanager das Master-Passwort anbieten können. Die Anwendung selbst speichert dabei nichts; ob und wo gespeichert wird, entscheidet allein der Browser bzw. der Anwender. |
+| FUN-63 | Das Absenden MUSS unterbunden werden (`preventDefault`), sonst lädt die Seite neu und ein entsperrter Zustand geht verloren. |
+| FUN-64 | Das Kennungsfeld SOLL den Dateinamen tragen, damit ein gespeicherter Eintrag zuordenbar ist. |
+| FUN-65 | Einträge MÜSSEN aus einer CSV-Datei importierbar sein, für beide Eintragstypen. |
+| FUN-66 | Die Spaltennamen sind **fest** und MÜSSEN im Import-Dialog selbst dokumentiert sein: `titel` (Pflicht), `typ`, `url`, `benutzer`, `passwort`, `totp`, `notizen`, `tags`. Englische Entsprechungen gelten ebenso. Reihenfolge beliebig, unbekannte Spalten werden ignoriert, fehlende bleiben leer. |
+| FUN-67 | Eine Vorlagendatei MUSS herunterladbar sein, mit Semikolon und BOM, damit deutsches Excel sie samt Umlauten direkt korrekt öffnet. |
+| FUN-68 | Der Parser MUSS RFC 4180 beherrschen: Anführungszeichen, eingebettete Trennzeichen und Zeilenumbrüche, verdoppelte Quotes, CRLF. Das Trennzeichen (Komma, Semikolon, Tabulator) MUSS automatisch erkannt werden. |
+| FUN-69 | Zeilen mit bereits vorhandenem Titel MÜSSEN übersprungen werden können; die Voreinstellung ist „überspringen". Der Vergleich erfolgt ohne Berücksichtigung von Groß- und Kleinschreibung. |
+| FUN-70 | Ungültige 2FA-Secrets MÜSSEN verworfen und gemeldet werden. Die Prüfung MUSS strenger sein als `base32Decode`, das Fremdzeichen kommentarlos entfernt und aus Unsinn einen plausibel aussehenden, aber falschen Code machen würde. |
+| FUN-71 | Der Import DARF nur den Speicher verändern und den Vault als ungespeichert markieren. So lässt sich ein misslungener Import durch Sperren ohne Speichern verwerfen. |
+| FUN-72 | Das Ergebnis MUSS die Zahl importierter, übersprungener und beanstandeter Zeilen nennen und darauf hinweisen, dass die CSV-Datei alle Passwörter im Klartext enthält und zu löschen ist. |
+
 ### 4.8 Markdown in Freitext-Einträgen
 
 | ID | Anforderung |
@@ -385,6 +402,19 @@ Abgehakte Punkte sind nachweisbar geprüft — die Krypto-, Datenintegritäts-, 
 - [x] Einzelne Zeilenumbrüche bleiben als `<br>` erhalten (Backup-Code-Fall)
 - [x] Notizen an Zugangsdaten bleiben reiner Text — `**text**` wird nicht formatiert
 - [x] Vorschau nur bei Freitext, rendert den Rohtext und wird beim Zurückschalten und beim Sperren geleert
+
+### 9.8 Entsperr-Formular und CSV-Import
+
+- [x] Entsperr-Feld liegt in einem `<form>`, Knopf ist `type="submit"`, Kennungs- und Passwortfeld tragen die passenden `autocomplete`-Werte
+- [x] Das Absende-Ereignis ruft den Entsperr-Vorgang und lädt die Seite nicht neu
+- [x] CSV-Parser geprüft: Komma, Semikolon, zitierte Trennzeichen, verdoppelte Quotes, eingebettete Zeilenumbrüche, CRLF, Leerzeilen
+- [x] Trennzeichen-Erkennung für Komma, Semikolon und Tabulator
+- [x] Import geprüft: beide Typen, Standardtyp bei fehlender Spalte, Tags, englische Spaltennamen, Zeile ohne Titel, Dublette mit und ohne Überspringen, Verlaufseintrag, leere Zugangsfelder bei Freitext
+- [x] Fehlerfälle: nur Kopfzeile, fehlende Titelspalte
+- [x] Base32-Prüfung über acht Fälle; formatierte Secrets mit Leerzeichen und Bindestrichen bleiben gültig, Unsinn wird verworfen und gezählt
+- [x] Vorlage trägt BOM und Semikolon und ist selbst wieder importierbar
+- [x] Eintragskarten tragen keine gestrichelte Linie mehr
+- [ ] Speichern-Angebot des Passwortmanagers auf einem echten Android-Gerät (nur über die Server-Variante prüfbar, nicht über `file://`)
 - [x] Tabelle: Kopfzeile, Ausrichtung links/zentriert/rechts wirksam (per `getComputedStyle` geprüft), fehlende Zelle leer, überzählige verworfen, geschütztes `\|` bleibt Inhalt, Absatz danach wird wieder als Absatz erkannt
 - [x] Ohne Trennzeile entsteht keine Tabelle, der Text bleibt Absatz
 - [x] Tabelle liegt im Scroll-Container; die Karte bleibt bei 360 px im Viewport, kein horizontaler Seiten-Überlauf

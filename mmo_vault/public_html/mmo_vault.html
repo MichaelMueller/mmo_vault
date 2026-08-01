@@ -419,6 +419,17 @@ h1.brand{
 .md-body strong{color:var(--on-surface);}
 .md-sublist{margin:2px 0 0;}
 
+.csv-cols{border-collapse:collapse; width:100%; font-size:12.5px; margin:0 0 10px;}
+.csv-cols th, .csv-cols td{
+  border-bottom:1px solid var(--outline-variant); padding:5px 6px;
+  text-align:left; vertical-align:top; color:var(--on-surface-variant);
+}
+.csv-cols th{color:var(--on-surface); font-weight:600;}
+.csv-cols code{
+  font-family:var(--font-mono); font-size:11.5px; color:var(--primary);
+  background:var(--surface-container-highest); border-radius:5px; padding:1px 5px;
+}
+
 /* Tabelle scrollt in ihrem eigenen Container, statt die Karte zu verbreitern. */
 .md-table-wrap{overflow-x:auto; margin:0 0 8px;}
 .md-table{border-collapse:collapse; font-size:12px; min-width:100%;}
@@ -494,15 +505,6 @@ h1.brand{
   transition: border-color .15s, transform .1s;
 }
 .entry-card:hover{border-color: var(--outline);}
-.entry-card::after{
-  /* Lochrand-Motiv wie eine Schließfach-Quittung */
-  content:"";
-  position:absolute; left:16px; right:16px; top:0;
-  height:1px;
-  background-image: linear-gradient(90deg, var(--outline-variant) 50%, transparent 0);
-  background-size: 8px 1px;
-  opacity:.6;
-}
 .entry-head{display:flex; align-items:flex-start; justify-content:space-between; gap:8px;}
 .entry-head > div:first-child{min-width:0;}
 .entry-title{font-weight:600; font-size:15.5px; margin:0 0 2px; word-break:break-word; overflow-wrap:anywhere;}
@@ -756,13 +758,26 @@ h1.brand{
       </div>
 
       <div id="passwordStep" style="display:none;">
-        <div class="field">
-          <input type="password" id="unlockPassword" placeholder=" " autocomplete="current-password">
-          <label for="unlockPassword" data-i18n="master_password">Master-Passwort</label>
-        </div>
-        <div class="lock-actions">
-          <button class="btn btn-filled btn-block" id="btnUnlock" data-i18n="unlock">Entsperren</button>
-        </div>
+        <!-- Echtes Formular, damit Passwortmanager das Master-Passwort ueberhaupt
+             anbieten koennen. Das Formular speichert nichts von sich aus — ob und
+             wo gespeichert wird, entscheidet der Browser bzw. der Anwender. -->
+        <form id="unlockForm">
+          <!-- Ein Passwort wird von Passwortmanagern nur zusammen mit einer
+               Kennung abgelegt. Das Feld traegt den Dateinamen, damit der
+               Eintrag spaeter zuzuordnen ist. Sichtbar ausserhalb des Bildes
+               statt display:none — versteckte Felder werden von manchen
+               Managern ignoriert. -->
+          <input type="text" id="unlockUser" name="username" autocomplete="username"
+                 tabindex="-1" aria-hidden="true" readonly
+                 style="position:absolute; left:-9999px; width:1px; height:1px; opacity:0;">
+          <div class="field">
+            <input type="password" id="unlockPassword" name="password" placeholder=" " autocomplete="current-password">
+            <label for="unlockPassword" data-i18n="master_password">Master-Passwort</label>
+          </div>
+          <div class="lock-actions">
+            <button type="submit" class="btn btn-filled btn-block" id="btnUnlock" data-i18n="unlock">Entsperren</button>
+          </div>
+        </form>
         <button class="btn btn-text btn-block" id="btnBackToFileStep" data-i18n="choose_other_file" style="margin-top:10px;">← Andere Datei wählen</button>
       </div>
 
@@ -819,6 +834,9 @@ h1.brand{
     </button>
     <button class="icon-btn topbar-collapsible" id="btnChangePassword" data-i18n-title="change_password_title" title="Master-Passwort ändern">
       <svg viewBox="0 0 24 24"><path d="M12.65 10a5.5 5.5 0 1 0 0 4h2.35v3h3v-3H21v-4zM7.5 13a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"></path></svg>
+    </button>
+    <button class="icon-btn topbar-collapsible" id="btnImport" data-i18n-title="import_title" title="CSV importieren">
+      <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7zM5 18v2h14v-2z"></path></svg>
     </button>
     <button class="icon-btn topbar-collapsible" id="btnHistory" data-i18n-title="history_title" title="Änderungsverlauf">
       <svg viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6a7 7 0 1 1 2.05 4.95l-1.42 1.42A9 9 0 1 0 13 3zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8z"></path></svg>
@@ -981,6 +999,58 @@ h1.brand{
   </div>
 </div>
 
+<!-- ============ CSV-Import ============ -->
+<div class="overlay" id="importOverlay">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="importTitle">
+    <h3 id="importTitle" data-i18n="import_h">CSV importieren</h3>
+
+    <p style="font-size:13.5px; line-height:1.6; color:var(--on-surface-variant); margin:0 0 12px;" data-i18n="import_intro">Die erste Zeile muss die Spaltennamen enthalten. Reihenfolge egal, unbekannte Spalten werden ignoriert, fehlende bleiben leer. Trennzeichen (Komma, Semikolon oder Tabulator) wird automatisch erkannt.</p>
+
+    <table class="csv-cols">
+      <thead><tr><th data-i18n="import_col">Spalte</th><th data-i18n="import_meaning">Bedeutung</th></tr></thead>
+      <tbody>
+        <tr><td><code>titel</code></td><td data-i18n="import_col_title">Pflichtfeld. Zeilen ohne Titel werden übersprungen.</td></tr>
+        <tr><td><code>typ</code></td><td data-i18n="import_col_type">zugang oder freitext. Fehlt die Spalte, gilt die Auswahl unten.</td></tr>
+        <tr><td><code>url</code></td><td data-i18n="import_col_url">Nur bei Zugang</td></tr>
+        <tr><td><code>benutzer</code></td><td data-i18n="import_col_user">Nur bei Zugang</td></tr>
+        <tr><td><code>passwort</code></td><td data-i18n="import_col_pw">Nur bei Zugang</td></tr>
+        <tr><td><code>totp</code></td><td data-i18n="import_col_totp">2FA-Secret in Base32. Ungültige werden verworfen und gemeldet.</td></tr>
+        <tr><td><code>notizen</code></td><td data-i18n="import_col_notes">Bei Freitext der Inhalt, als Markdown dargestellt</td></tr>
+        <tr><td><code>tags</code></td><td data-i18n="import_col_tags">Mehrere mit senkrechtem Strich trennen: arbeit|cloud</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px; color:var(--on-surface-variant); margin:0 0 14px;" data-i18n="import_aliases">Englische Namen gehen ebenso: title, type, username, password, notes.</p>
+
+    <button class="btn btn-text" id="btnCsvTemplate" data-i18n="import_template">⬇ Vorlage herunterladen</button>
+
+    <div class="field" style="margin-top:14px;">
+      <select id="importDefaultType">
+        <option value="zugang" data-i18n="type_zugang_badge">Zugang</option>
+        <option value="freitext" data-i18n="type_freitext_badge">Freitext</option>
+      </select>
+    </div>
+    <p style="font-size:12px; color:var(--on-surface-variant); margin:-10px 0 14px;" data-i18n="import_default_type_hint">Typ für Zeilen ohne Spalte „typ"</p>
+
+    <label class="check-row" for="importSkipDup">
+      <input type="checkbox" id="importSkipDup" checked>
+      <span data-i18n="import_skip_dup">Einträge mit bereits vorhandenem Titel überspringen</span>
+    </label>
+
+    <input type="file" id="csvFileInput" accept=".csv,text/csv,text/plain" style="display:none">
+    <div class="lock-actions" style="margin-top:12px;">
+      <button class="btn btn-outline btn-block" id="btnCsvChoose" data-i18n="import_choose">Datei wählen…</button>
+    </div>
+
+    <div id="importReport" class="status-msg" style="text-align:left; margin-top:14px;"></div>
+
+    <p style="font-size:12px; line-height:1.6; color:var(--error); margin:10px 0 0;" data-i18n="import_warn">⚠ Eine CSV-Datei enthält alle Passwörter im Klartext. Lösche sie nach dem Import.</p>
+
+    <div class="dialog-actions">
+      <button class="btn btn-text" id="btnCloseImport" data-i18n="close">Schließen</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ Speichern fehlgeschlagen ============ -->
 <div class="overlay" id="saveFailedOverlay">
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="saveFailedTitle">
@@ -1038,7 +1108,7 @@ h1.brand{
       </div>
       <div>
         <h3 id="aboutTitle" style="margin:0;">MMO Vault</h3>
-        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.6.0 · lokaler Passwortmanager</p>
+        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.7.0 · lokaler Passwortmanager</p>
       </div>
     </div>
 
@@ -1064,6 +1134,7 @@ h1.brand{
   <button id="moreLock">🔒 <span data-i18n="lock_title">Sperren</span></button>
   <button id="moreAutoLock">⏱️ <span data-i18n="autolock_title">Auto-Sperre</span></button>
   <button id="moreChangePassword">🔐 <span data-i18n="change_password_title">Master-Passwort ändern</span></button>
+  <button id="moreImport">📥 <span data-i18n="import_title">CSV importieren</span></button>
   <button id="moreHistory">🕐 <span data-i18n="history_title">Änderungsverlauf</span></button>
   <button id="moreAbout">ℹ️ <span data-i18n="about_title">Über MMO Vault</span></button>
 </div>
@@ -1107,6 +1178,34 @@ const I18N = {
     search_entries: 'Einträge durchsuchen…',
     change_password_title: 'Master-Passwort ändern',
     history_title: 'Änderungsverlauf',
+    import_title: 'CSV importieren',
+    import_h: 'CSV importieren',
+    import_intro: 'Die erste Zeile muss die Spaltennamen enthalten. Reihenfolge egal, unbekannte Spalten werden ignoriert, fehlende bleiben leer. Trennzeichen (Komma, Semikolon oder Tabulator) wird automatisch erkannt.',
+    import_col: 'Spalte',
+    import_meaning: 'Bedeutung',
+    import_col_title: 'Pflichtfeld. Zeilen ohne Titel werden übersprungen.',
+    import_col_type: 'zugang oder freitext. Fehlt die Spalte, gilt die Auswahl unten.',
+    import_col_url: 'Nur bei Zugang',
+    import_col_user: 'Nur bei Zugang',
+    import_col_pw: 'Nur bei Zugang',
+    import_col_totp: '2FA-Secret in Base32. Ungültige werden verworfen und gemeldet.',
+    import_col_notes: 'Bei Freitext der Inhalt, als Markdown dargestellt',
+    import_col_tags: 'Mehrere mit senkrechtem Strich trennen: arbeit|cloud',
+    import_aliases: 'Englische Namen gehen ebenso: title, type, username, password, notes.',
+    import_template: '⬇ Vorlage herunterladen',
+    import_default_type_hint: 'Typ für Zeilen ohne Spalte „typ"',
+    import_skip_dup: 'Einträge mit bereits vorhandenem Titel überspringen',
+    import_choose: 'Datei wählen…',
+    import_warn: '⚠ Eine CSV-Datei enthält alle Passwörter im Klartext. Lösche sie nach dem Import.',
+    import_done: '{n} von {gesamt} Zeilen importiert — jetzt speichern nicht vergessen.',
+    import_skipped_dup: '{n} Dublette(n) übersprungen.',
+    import_skipped_untitled: '{n} Zeile(n) ohne Titel übersprungen.',
+    import_bad_totp: '{n} ungültige(s) 2FA-Secret(s) verworfen.',
+    import_many: 'Mehr als {n} Einträge — die Darstellung kann träge werden.',
+    import_err_empty: 'Die Datei enthält keine Datenzeilen.',
+    import_err_no_title: 'Es fehlt eine Spalte „titel“.',
+    import_err_read: 'Datei konnte nicht gelesen werden: ',
+    hist_csv_imported: 'Einträge aus CSV importiert',
     about_title: 'Über MMO Vault',
     lock_title: 'Sperren',
     save_file_title: 'Speichern',
@@ -1170,7 +1269,7 @@ const I18N = {
     change_btn: 'Ändern',
     history_h: 'Änderungsverlauf',
     close: 'Schließen',
-    about_version: 'Version 1.6.0 · lokaler Passwortmanager',
+    about_version: 'Version 1.7.0 · lokaler Passwortmanager',
     about_p1: 'Entwickelt von <strong>Michael Müller</strong>. Teil der <strong>MMO</strong>-Toolreihe für Eigenprojekte.',
     about_p2: 'Läuft vollständig lokal im Browser als einzelne HTML-Datei — keine externen Server, keine CDN-Abhängigkeiten, keine Telemetrie, per Content-Security-Policy erzwungen. Verschlüsselung per AES-256-GCM (PBKDF2-SHA256, 600.000 Iterationen), TOTP-2FA nach RFC 6238, QR-Code-Import über die native BarcodeDetector-API.',
     about_p3: 'Keine Garantie, keine Gewährleistung — nutz es auf eigene Verantwortung, wie jedes selbstgebaute Werkzeug. Regelmäßige Backups der Vault-Datei sind Pflicht, nicht optional.',
@@ -1273,6 +1372,34 @@ const I18N = {
     search_entries: 'Search entries…',
     change_password_title: 'Change master password',
     history_title: 'Change history',
+    import_title: 'Import CSV',
+    import_h: 'Import CSV',
+    import_intro: 'The first row must contain the column names. Order does not matter, unknown columns are ignored, missing ones stay empty. The separator (comma, semicolon or tab) is detected automatically.',
+    import_col: 'Column',
+    import_meaning: 'Meaning',
+    import_col_title: 'Required. Rows without a title are skipped.',
+    import_col_type: 'zugang or freitext. Without this column the choice below applies.',
+    import_col_url: 'Logins only',
+    import_col_user: 'Logins only',
+    import_col_pw: 'Logins only',
+    import_col_totp: '2FA secret in Base32. Invalid ones are dropped and reported.',
+    import_col_notes: 'For notes this is the content, rendered as Markdown',
+    import_col_tags: 'Separate several with a vertical bar: work|cloud',
+    import_aliases: 'English names work too: title, type, username, password, notes.',
+    import_template: '⬇ Download template',
+    import_default_type_hint: 'Type for rows without a "typ" column',
+    import_skip_dup: 'Skip entries whose title already exists',
+    import_choose: 'Choose file…',
+    import_warn: '⚠ A CSV file contains every password in plain text. Delete it after importing.',
+    import_done: 'Imported {n} of {gesamt} rows — remember to save.',
+    import_skipped_dup: 'Skipped {n} duplicate(s).',
+    import_skipped_untitled: 'Skipped {n} row(s) without a title.',
+    import_bad_totp: 'Dropped {n} invalid 2FA secret(s).',
+    import_many: 'More than {n} entries — rendering may become sluggish.',
+    import_err_empty: 'The file contains no data rows.',
+    import_err_no_title: 'A "titel" (title) column is missing.',
+    import_err_read: 'The file could not be read: ',
+    hist_csv_imported: 'Entries imported from CSV',
     about_title: 'About MMO Vault',
     lock_title: 'Lock',
     save_file_title: 'Save',
@@ -1336,7 +1463,7 @@ const I18N = {
     change_btn: 'Change',
     history_h: 'Change history',
     close: 'Close',
-    about_version: 'Version 1.6.0 · local password manager',
+    about_version: 'Version 1.7.0 · local password manager',
     about_p1: 'Developed by <strong>Michael Müller</strong>. Part of the <strong>MMO</strong> tool series for personal projects.',
     about_p2: 'Runs entirely locally in the browser as a single HTML file — no external servers, no CDN dependencies, no telemetry, enforced by a Content Security Policy. Encryption via AES-256-GCM (PBKDF2-SHA256, 600,000 iterations), TOTP 2FA per RFC 6238, QR code import via the native BarcodeDetector API.',
     about_p3: 'No warranty, no guarantee — use at your own risk, like any self-built tool. Regular backups of the vault file are mandatory, not optional.',
@@ -2158,9 +2285,18 @@ document.getElementById('btnCreateVault').onclick = async () => {
   showToast(t('toast_vault_created'));
 };
 
-document.getElementById('btnUnlock').onclick = async () => {
-  showToast(t('toast_load_file_first'));
-};
+/* Das Entsperren laeuft ueber das submit-Ereignis des Formulars, nicht ueber
+   einen Klick-Handler. Nur so loest auch die Eingabetaste aus und der Browser
+   erkennt den Vorgang als Anmeldung — Voraussetzung dafuer, dass ein
+   Passwortmanager das Speichern anbietet. */
+let unlockHandler = () => showToast(t('toast_load_file_first'));
+
+document.getElementById('unlockForm').addEventListener('submit', (e) => {
+  // Ohne preventDefault laedt die Seite neu und ein bereits entsperrter
+  // Zustand waere verloren; ueber file:// waere es besonders unschoen.
+  e.preventDefault();
+  unlockHandler();
+});
 
 /* ---------- Gemerkte Datei-Verknüpfung (File System Access API + IndexedDB) ----------
    Speichert das FileSystemFileHandle-Objekt selbst (nicht den Dateiinhalt) in IndexedDB,
@@ -2217,7 +2353,11 @@ async function clearStoredFileHandle(){
 function showPasswordStep(){
   document.getElementById('fileStep').style.display = 'none';
   document.getElementById('passwordStep').style.display = 'block';
-  document.getElementById('btnUnlock').onclick = tryUnlockPendingVault;
+  unlockHandler = tryUnlockPendingVault;
+  // Kennung fuer den Passwortmanager: der Dateiname macht den gespeicherten
+  // Eintrag spaeter zuordenbar statt namenlos.
+  document.getElementById('unlockUser').value =
+    (state.fileHandle && state.fileHandle.name) || 'mmo-vault';
   document.getElementById('unlockPassword').focus();
 }
 function showFileStep(){
@@ -2408,10 +2548,6 @@ async function tryUnlockPendingVault(){
   }
 }
 
-document.getElementById('unlockPassword').addEventListener('keydown', (e)=>{
-  if(e.key === 'Enter') document.getElementById('btnUnlock').click();
-});
-
 /* ---------- Suchausdruck aus der Adresse ----------
    Bewusst das Fragment (#search=…) und nicht ein Query-String: Fragmente werden
    nie an den Server gesendet und tauchen damit in keinem Zugriffslog auf. Ein
@@ -2553,7 +2689,7 @@ function lockApp(){
   document.getElementById('fileStep').style.display = 'block';
   document.getElementById('passwordStep').style.display = 'none';
   document.getElementById('unlockPassword').value = '';
-  document.getElementById('btnUnlock').onclick = () => showToast(t('toast_load_file_first'));
+  unlockHandler = () => showToast(t('toast_load_file_first'));
   setLockStatus('', '');
   clearTimeout(autoLockTimer);
   clearInterval(totpTickHandle);
@@ -3744,6 +3880,205 @@ document.getElementById('btnSaveEntry').onclick = () => {
   showToast(t('toast_entry_saved'));
 };
 
+/* ============================================================
+   CSV-Import
+
+   Feste Spaltennamen statt eines Zuordnungsdialogs — die Namen stehen im
+   Dialog selbst und in der README, und es gibt eine Vorlage zum Herunterladen.
+   Alles laeuft nur im Speicher: der Vault wird als ungespeichert markiert, das
+   Schreiben in die Datei bleibt ein bewusster zweiter Schritt. Ein misslungener
+   Import laesst sich dadurch durch Sperren ohne Speichern verwerfen.
+   ============================================================ */
+
+const CSV_SPALTEN = {
+  typ:'type',        type:'type',
+  titel:'title',     title:'title',
+  url:'url',
+  benutzer:'username', username:'username', user:'username',
+  passwort:'password', password:'password',
+  totp:'totp',       '2fa':'totp',
+  notizen:'notes',   notes:'notes',
+  tags:'tags'
+};
+
+/* Warnschwelle: renderEntries() zeichnet alle gefilterten Karten ohne
+   Virtualisierung, oberhalb dieser Menge wird die Oberflaeche traege. */
+const CSV_WARN_ZEILEN = 500;
+
+/* Strenge Base32-Pruefung fuer importierte 2FA-Secrets. Leerzeichen, Bindestriche
+   und Fuellzeichen sind uebliche Formatierung und erlaubt; alles andere macht den
+   Wert ungueltig. */
+function istBase32(wert){
+  const bereinigt = (wert || '').replace(/[\s-]/g, '').replace(/=+$/, '');
+  return bereinigt.length > 0 && /^[A-Za-z2-7]+$/.test(bereinigt);
+}
+
+/* Zerlegt CSV nach RFC 4180: Anfuehrungszeichen, eingebettete Trennzeichen und
+   Zeilenumbrueche, verdoppelte Quotes als Escape, CRLF wie LF. */
+function parseCsv(text, trenner){
+  const zeilen = [];
+  let feld = '', zeile = [], imQuote = false;
+  for(let i = 0; i < text.length; i++){
+    const c = text[i];
+    if(imQuote){
+      if(c === '"'){
+        if(text[i + 1] === '"'){ feld += '"'; i++; }
+        else imQuote = false;
+      } else feld += c;
+      continue;
+    }
+    if(c === '"'){ imQuote = true; continue; }
+    if(c === trenner){ zeile.push(feld); feld = ''; continue; }
+    if(c === '\r') continue;
+    if(c === '\n'){ zeile.push(feld); zeilen.push(zeile); zeile = []; feld = ''; continue; }
+    feld += c;
+  }
+  if(feld !== '' || zeile.length){ zeile.push(feld); zeilen.push(zeile); }
+  // Vollstaendig leere Zeilen verwerfen — Tabellenprogramme haengen gern welche an.
+  return zeilen.filter(z => z.some(f => f.trim() !== ''));
+}
+
+/* Trennzeichen aus der Kopfzeile raten. Deutsches Excel schreibt Semikolon,
+   angelsaechsisches Komma, manche Werkzeuge Tabulatoren. */
+function erkenneTrenner(text){
+  const kopf = text.split('\n')[0] || '';
+  const kandidaten = [';', ',', '\t'];
+  let besterTrenner = ',', besteAnzahl = -1;
+  kandidaten.forEach(k => {
+    const anzahl = kopf.split(k).length - 1;
+    if(anzahl > besteAnzahl){ besteAnzahl = anzahl; besterTrenner = k; }
+  });
+  return besterTrenner;
+}
+
+function csvVorlage(){
+  // Semikolon und BOM: so oeffnet deutsches Excel die Datei direkt korrekt,
+  // inklusive Umlauten.
+  const zeilen = [
+    'typ;titel;url;benutzer;passwort;totp;notizen;tags',
+    'zugang;Beispiel-Konto;https://example.test;benutzer@example.test;GeheimesPasswort;JBSWY3DPEHPK3PXP;Eine Notiz;arbeit|cloud',
+    'freitext;Beispiel-Notiz;;;;;"# Überschrift\n\nText mit **Markdown**.";doku'
+  ];
+  return '﻿' + zeilen.join('\r\n') + '\r\n';
+}
+
+function importiereCsv(text, standardTyp, dublettenUeberspringen){
+  const trenner = erkenneTrenner(text);
+  const zeilen = parseCsv(text.replace(/^﻿/, ''), trenner);
+  if(zeilen.length < 2) return { fehler: t('import_err_empty') };
+
+  const kopf = zeilen[0].map(h => CSV_SPALTEN[h.trim().toLowerCase()] || null);
+  if(!kopf.includes('title')) return { fehler: t('import_err_no_title') };
+
+  const vorhandeneTitel = new Set(state.entries.map(e => (e.title || '').trim().toLowerCase()));
+  const bericht = { importiert: 0, dubletten: 0, ohneTitel: 0, ungueltigeTotp: 0, zeilen: zeilen.length - 1 };
+  const neue = [];
+
+  zeilen.slice(1).forEach(spalten => {
+    const w = {};
+    kopf.forEach((feld, idx) => { if(feld) w[feld] = (spalten[idx] || '').trim(); });
+
+    const titel = (w.title || '').trim();
+    if(!titel){ bericht.ohneTitel++; return; }
+
+    const schluessel = titel.toLowerCase();
+    if(dublettenUeberspringen && vorhandeneTitel.has(schluessel)){ bericht.dubletten++; return; }
+    vorhandeneTitel.add(schluessel);
+
+    const typ = (w.type || '').toLowerCase() === 'freitext' || (w.type || '').toLowerCase() === 'note'
+      ? 'freitext'
+      : ((w.type || '').toLowerCase() === 'zugang' || (w.type || '').toLowerCase() === 'login' ? 'zugang' : standardTyp);
+    const istZugang = typ === 'zugang';
+
+    // Ungueltige 2FA-Secrets verwerfen statt still einen Eintrag anzulegen,
+    // der nie einen brauchbaren Code liefert. Bewusst strenger als
+    // base32Decode(): das filtert Fremdzeichen kommentarlos heraus, aus
+    // "NICHT-BASE32-!!!" wuerde "NICHTBASE32" und damit ein plausibel
+    // aussehender, aber falscher Code.
+    let totp = istZugang ? (w.totp || '').replace(/\s/g, '') : '';
+    if(totp && !istBase32(totp)){ totp = ''; bericht.ungueltigeTotp++; }
+
+    neue.push({
+      id: uid(),
+      num: takeNextEntryNum(),
+      type: typ,
+      title: titel,
+      url: istZugang ? (w.url || '') : '',
+      username: istZugang ? (w.username || '') : '',
+      password: istZugang ? (w.password || '') : '',
+      totp,
+      totpDigits: TOTP_DEFAULTS.digits,
+      totpPeriod: TOTP_DEFAULTS.period,
+      totpAlgorithm: TOTP_DEFAULTS.algorithm,
+      notes: w.notes || '',
+      tags: (w.tags || '').split('|').map(x => x.trim()).filter(Boolean),
+      attachments: []
+    });
+    bericht.importiert++;
+  });
+
+  if(neue.length){
+    state.entries.push(...neue);
+    addHistory('hist_csv_imported', String(neue.length));
+    state.dirty = true;
+    renderEntries();
+  }
+  return bericht;
+}
+
+/* ---------- CSV-Import: Dialog ---------- */
+
+const importOverlay = document.getElementById('importOverlay');
+
+function openImportDialog(){
+  if(!state.key) return;
+  const bericht = document.getElementById('importReport');
+  bericht.textContent = '';
+  bericht.className = 'status-msg';
+  importOverlay.classList.add('show');
+}
+document.getElementById('btnImport').onclick = openImportDialog;
+document.getElementById('btnCloseImport').onclick = () => importOverlay.classList.remove('show');
+
+document.getElementById('btnCsvTemplate').onclick = () => {
+  const blob = new Blob([csvVorlage()], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'mmo-vault-vorlage.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+};
+
+document.getElementById('btnCsvChoose').onclick = () => document.getElementById('csvFileInput').click();
+
+document.getElementById('csvFileInput').addEventListener('change', async (e) => {
+  const datei = e.target.files[0];
+  e.target.value = '';
+  if(!datei) return;
+  const anzeige = document.getElementById('importReport');
+  try{
+    const text = await datei.text();
+    const standardTyp = document.getElementById('importDefaultType').value;
+    const ueberspringen = document.getElementById('importSkipDup').checked;
+    const b = importiereCsv(text, standardTyp, ueberspringen);
+    if(b.fehler){
+      anzeige.textContent = b.fehler;
+      anzeige.className = 'status-msg error';
+      return;
+    }
+    const teile = [t('import_done', { n: b.importiert, gesamt: b.zeilen })];
+    if(b.dubletten)      teile.push(t('import_skipped_dup', { n: b.dubletten }));
+    if(b.ohneTitel)      teile.push(t('import_skipped_untitled', { n: b.ohneTitel }));
+    if(b.ungueltigeTotp) teile.push(t('import_bad_totp', { n: b.ungueltigeTotp }));
+    if(b.importiert > CSV_WARN_ZEILEN) teile.push(t('import_many', { n: CSV_WARN_ZEILEN }));
+    anzeige.textContent = teile.join(' ');
+    anzeige.className = 'status-msg ' + (b.importiert ? 'info' : 'error');
+  }catch(err){
+    anzeige.textContent = t('import_err_read') + err.message;
+    anzeige.className = 'status-msg error';
+  }
+});
+
 /* ---------- Passwort-Generator ---------- */
 
 document.getElementById('genLength').addEventListener('input', (e)=>{
@@ -3965,6 +4300,7 @@ document.getElementById('moreChangePassword').onclick = () => {
   if(!state.key) return;
   openChangePasswordDialog();
 };
+document.getElementById('moreImport').onclick = () => { closeMoreMenu(); openImportDialog(); };
 document.getElementById('moreHistory').onclick = () => { closeMoreMenu(); openHistoryDialog(); };
 document.getElementById('moreAbout').onclick = () => { closeMoreMenu(); openAboutDialog(); };
 document.getElementById('moreAutoLock').onclick = () => { closeMoreMenu(); openAutoLockDialog(); };

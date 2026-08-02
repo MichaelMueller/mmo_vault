@@ -2,6 +2,17 @@ tmp
 var
 CLAUDE.local.md
 
+# --- Nutzerdaten duerfen niemals ins Repo ---
+# pull_push.sh fuehrt "git add -A" aus. Ohne diese Regeln landet eine
+# versehentlich im Projektverzeichnis abgelegte Datei automatisch im Commit
+# und damit auf GitHub.
+#
+# Vault-Dateien sind zwar verschluesselt, waeren oeffentlich aber offline
+# angreifbar. CSV wiegt schwerer: dort stehen alle Passwoerter im Klartext.
+*.vault
+*vault*.json
+*.csv
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

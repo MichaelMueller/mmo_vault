@@ -1024,17 +1024,17 @@ h1.brand{
     <table class="csv-cols">
       <thead><tr><th data-i18n="import_col">Spalte</th><th data-i18n="import_meaning">Bedeutung</th></tr></thead>
       <tbody>
-        <tr><td><code>titel</code></td><td data-i18n="import_col_title">Pflichtfeld. Zeilen ohne Titel werden übersprungen.</td></tr>
-        <tr><td><code>typ</code></td><td data-i18n="import_col_type">zugang oder freitext. Fehlt die Spalte, gilt die Auswahl unten.</td></tr>
+        <tr><td><code>title</code></td><td data-i18n="import_col_title">Pflichtfeld. Zeilen ohne Titel werden übersprungen.</td></tr>
+        <tr><td><code>type</code></td><td data-i18n="import_col_type">zugang oder freitext. Fehlt die Spalte, gilt die Auswahl unten.</td></tr>
         <tr><td><code>url</code></td><td data-i18n="import_col_url">Nur bei Zugang</td></tr>
-        <tr><td><code>benutzer</code></td><td data-i18n="import_col_user">Nur bei Zugang</td></tr>
-        <tr><td><code>passwort</code></td><td data-i18n="import_col_pw">Nur bei Zugang</td></tr>
+        <tr><td><code>username</code></td><td data-i18n="import_col_user">Nur bei Zugang</td></tr>
+        <tr><td><code>password</code></td><td data-i18n="import_col_pw">Nur bei Zugang</td></tr>
         <tr><td><code>totp</code></td><td data-i18n="import_col_totp">2FA-Secret in Base32. Ungültige werden verworfen und gemeldet.</td></tr>
-        <tr><td><code>notizen</code></td><td data-i18n="import_col_notes">Bei Freitext der Inhalt, als Markdown dargestellt</td></tr>
+        <tr><td><code>notes</code></td><td data-i18n="import_col_notes">Bei Freitext der Inhalt, als Markdown dargestellt</td></tr>
         <tr><td><code>tags</code></td><td data-i18n="import_col_tags">Mehrere mit senkrechtem Strich trennen: arbeit|cloud</td></tr>
       </tbody>
     </table>
-    <p style="font-size:12px; color:var(--on-surface-variant); margin:0 0 14px;" data-i18n="import_aliases">Englische Namen gehen ebenso: title, type, username, password, notes.</p>
+    <p style="font-size:12px; color:var(--on-surface-variant); margin:0 0 14px;" data-i18n="import_aliases">Die Spaltennamen sind ausschließlich englisch — deutsche Bezeichnungen werden nicht erkannt.</p>
 
     <button class="btn btn-text" id="btnCsvTemplate" data-i18n="import_template">⬇ Vorlage herunterladen</button>
 
@@ -1044,7 +1044,7 @@ h1.brand{
         <option value="freitext" data-i18n="type_freitext_badge">Freitext</option>
       </select>
     </div>
-    <p style="font-size:12px; color:var(--on-surface-variant); margin:-10px 0 14px;" data-i18n="import_default_type_hint">Typ für Zeilen ohne Spalte „typ"</p>
+    <p style="font-size:12px; color:var(--on-surface-variant); margin:-10px 0 14px;" data-i18n="import_default_type_hint">Typ für Zeilen ohne Spalte „type"</p>
 
     <label class="check-row" for="importSkipDup">
       <input type="checkbox" id="importSkipDup" checked>
@@ -1123,7 +1123,7 @@ h1.brand{
       </div>
       <div>
         <h3 id="aboutTitle" style="margin:0;">MMO Vault</h3>
-        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.7.1 · lokaler Passwortmanager</p>
+        <p data-i18n="about_version" style="margin:2px 0 0; font-size:12.5px; color:var(--on-surface-variant);">Version 1.8.0 · lokaler Passwortmanager</p>
       </div>
     </div>
 
@@ -1206,9 +1206,9 @@ const I18N = {
     import_col_totp: '2FA-Secret in Base32. Ungültige werden verworfen und gemeldet.',
     import_col_notes: 'Bei Freitext der Inhalt, als Markdown dargestellt',
     import_col_tags: 'Mehrere mit senkrechtem Strich trennen: arbeit|cloud',
-    import_aliases: 'Englische Namen gehen ebenso: title, type, username, password, notes.',
+    import_aliases: 'Die Spaltennamen sind ausschließlich englisch — deutsche Bezeichnungen werden nicht erkannt.',
     import_template: '⬇ Vorlage herunterladen',
-    import_default_type_hint: 'Typ für Zeilen ohne Spalte „typ"',
+    import_default_type_hint: 'Typ für Zeilen ohne Spalte „type"',
     import_skip_dup: 'Einträge mit bereits vorhandenem Titel überspringen',
     import_choose: 'Datei wählen…',
     import_warn: '⚠ Eine CSV-Datei enthält alle Passwörter im Klartext. Lösche sie nach dem Import.',
@@ -1218,7 +1218,7 @@ const I18N = {
     import_bad_totp: '{n} ungültige(s) 2FA-Secret(s) verworfen.',
     import_many: 'Mehr als {n} Einträge — die Darstellung kann träge werden.',
     import_err_empty: 'Die Datei enthält keine Datenzeilen.',
-    import_err_no_title: 'Es fehlt eine Spalte „titel“.',
+    import_err_no_title: 'Es fehlt eine Spalte „title“.',
     import_err_read: 'Datei konnte nicht gelesen werden: ',
     hist_csv_imported: 'Einträge aus CSV importiert',
     about_title: 'Über MMO Vault',
@@ -1284,7 +1284,7 @@ const I18N = {
     change_btn: 'Ändern',
     history_h: 'Änderungsverlauf',
     close: 'Schließen',
-    about_version: 'Version 1.7.1 · lokaler Passwortmanager',
+    about_version: 'Version 1.8.0 · lokaler Passwortmanager',
     about_p1: 'Entwickelt von <strong>Michael Müller</strong>. Teil der <strong>MMO</strong>-Toolreihe für Eigenprojekte.',
     about_p2: 'Läuft vollständig lokal im Browser als einzelne HTML-Datei — keine externen Server, keine CDN-Abhängigkeiten, keine Telemetrie, per Content-Security-Policy erzwungen. Verschlüsselung per AES-256-GCM (PBKDF2-SHA256, 600.000 Iterationen), TOTP-2FA nach RFC 6238, QR-Code-Import über die native BarcodeDetector-API.',
     about_p3: 'Keine Garantie, keine Gewährleistung — nutz es auf eigene Verantwortung, wie jedes selbstgebaute Werkzeug. Regelmäßige Backups der Vault-Datei sind Pflicht, nicht optional.',
@@ -1400,9 +1400,9 @@ const I18N = {
     import_col_totp: '2FA secret in Base32. Invalid ones are dropped and reported.',
     import_col_notes: 'For notes this is the content, rendered as Markdown',
     import_col_tags: 'Separate several with a vertical bar: work|cloud',
-    import_aliases: 'English names work too: title, type, username, password, notes.',
+    import_aliases: 'Column names are English only — German names are not recognised.',
     import_template: '⬇ Download template',
-    import_default_type_hint: 'Type for rows without a "typ" column',
+    import_default_type_hint: 'Type for rows without a "type" column',
     import_skip_dup: 'Skip entries whose title already exists',
     import_choose: 'Choose file…',
     import_warn: '⚠ A CSV file contains every password in plain text. Delete it after importing.',
@@ -1412,7 +1412,7 @@ const I18N = {
     import_bad_totp: 'Dropped {n} invalid 2FA secret(s).',
     import_many: 'More than {n} entries — rendering may become sluggish.',
     import_err_empty: 'The file contains no data rows.',
-    import_err_no_title: 'A "titel" (title) column is missing.',
+    import_err_no_title: 'A "title" column is missing.',
     import_err_read: 'The file could not be read: ',
     hist_csv_imported: 'Entries imported from CSV',
     about_title: 'About MMO Vault',
@@ -1478,7 +1478,7 @@ const I18N = {
     change_btn: 'Change',
     history_h: 'Change history',
     close: 'Close',
-    about_version: 'Version 1.7.1 · local password manager',
+    about_version: 'Version 1.8.0 · local password manager',
     about_p1: 'Developed by <strong>Michael Müller</strong>. Part of the <strong>MMO</strong> tool series for personal projects.',
     about_p2: 'Runs entirely locally in the browser as a single HTML file — no external servers, no CDN dependencies, no telemetry, enforced by a Content Security Policy. Encryption via AES-256-GCM (PBKDF2-SHA256, 600,000 iterations), TOTP 2FA per RFC 6238, QR code import via the native BarcodeDetector API.',
     about_p3: 'No warranty, no guarantee — use at your own risk, like any self-built tool. Regular backups of the vault file are mandatory, not optional.',
@@ -3915,14 +3915,16 @@ document.getElementById('btnSaveEntry').onclick = () => {
    Import laesst sich dadurch durch Sperren ohne Speichern verwerfen.
    ============================================================ */
 
+/* Ausschliesslich englische Spaltennamen — eine einzige Schreibweise je Feld,
+   damit Vorlage, Dialog und README dasselbe sagen. */
 const CSV_SPALTEN = {
-  typ:'type',        type:'type',
-  titel:'title',     title:'title',
+  type:'type',
+  title:'title',
   url:'url',
-  benutzer:'username', username:'username', user:'username',
-  passwort:'password', password:'password',
+  username:'username',
+  password:'password',
   totp:'totp',       '2fa':'totp',
-  notizen:'notes',   notes:'notes',
+  notes:'notes',
   tags:'tags'
 };
 
@@ -3980,7 +3982,7 @@ function csvVorlage(){
   // Semikolon und BOM: so oeffnet deutsches Excel die Datei direkt korrekt,
   // inklusive Umlauten.
   const zeilen = [
-    'typ;titel;url;benutzer;passwort;totp;notizen;tags',
+    'type;title;url;username;password;totp;notes;tags',
     'zugang;Beispiel-Konto;https://example.test;benutzer@example.test;GeheimesPasswort;JBSWY3DPEHPK3PXP;Eine Notiz;arbeit|cloud',
     'freitext;Beispiel-Notiz;;;;;"# Überschrift\n\nText mit **Markdown**.";doku'
   ];

@@ -1,191 +1,200 @@
 # MMO Vault
 
-**Lokaler Passwortmanager als eine einzige HTML-Datei.** Keine Server, keine Installation, keine Abhängigkeiten — der Vault ist eine verschlüsselte Datei, die dir gehört und die du selbst ablegst.
+**A local password manager in a single HTML file.** No server, no installation, no dependencies — the vault is an encrypted file that belongs to you and that you store yourself.
 
-> **Version 1.7.1** · Funktional vollständig. Alle automatisiert prüfbaren Abnahmekriterien sind verifiziert — Kryptografie gegen die RFC-Testvektoren, Speicher-Roundtrip mit Rollback, Sperrverhalten, Container-Auslieferung und Layout von 320 px bis Desktop.
+> **Version 1.8.0** · Functionally complete. Every acceptance criterion that can be checked automatically has been verified — cryptography against the RFC test vectors, save roundtrip with rollback, locking behaviour, container delivery, and layout from 320 px up to desktop.
 >
-> **Sechs Prüfungen erfordern Handarbeit und stehen aus:** Ablauf der Auto-Sperre, Sichtprüfung der Übersetzungen auf Umbrüche, Bedienung allein mit Tastatur, Funktionsprüfung in Firefox und Safari, Ersatzverhalten ohne File System Access API und ohne `BarcodeDetector`, sowie die Prüfung mit dem Reverse Proxy der Zielumgebung. Der jeweils aktuelle Stand steht in [docs/requirements.md](docs/requirements.md#9-abnahmekriterien) als Kästchenliste.
+> **Six checks require manual work and are still open:** the auto-lock timeout, a visual check of the translations for line breaks, keyboard-only operation, functional testing in Firefox and Safari, fallback behaviour without the File System Access API and without `BarcodeDetector`, and testing against the reverse proxy of the target environment. The current state is tracked as a checklist in [docs/requirements.md](docs/requirements.md#9-abnahmekriterien).
 
 ---
 
-## Loslegen
+## What it looks like
 
-1. [mmo_vault/public_html/mmo_vault.html](mmo_vault/public_html/mmo_vault.html) herunterladen.
-2. Datei im Browser öffnen (Doppelklick genügt — kein Webserver nötig).
-3. **Neue Datei anlegen**, Master-Passwort vergeben, Einträge erfassen, **Speichern**.
-
-Beim ersten Speichern fragt der Browser nach einem Speicherort. Ab dann schreibt die Anwendung direkt in diese Datei. Browser ohne File System Access API laden stattdessen jedes Mal eine Datei herunter.
+| Unlocking | Working |
+|---|---|
+| [![Login screen with vault file selection](docs/login_screen.png)](docs/login_screen.png) | [![Main view with entries, tags and search](docs/main_screen.png)](docs/main_screen.png) |
+| Start without any decrypted data: most recently used file, load, or create a new one. | One card per entry, full-text search with field filters, tags, type filter, and the auto-lock countdown. |
 
 ---
 
-## Ausliefern per Docker
+## Getting started
+
+1. Download [mmo_vault/public_html/mmo_vault.html](mmo_vault/public_html/mmo_vault.html).
+2. Open the file in a browser (a double-click is enough — no web server required).
+3. **Create a new file**, choose a master password, add entries, **Save**.
+
+On the first save the browser asks for a location. From then on the application writes directly into that file. Browsers without the File System Access API download a file each time instead.
+
+---
+
+## Deploying with Docker
 
 ```bash
 docker compose up -d --build     # → http://127.0.0.1:4080/
 ```
 
-Oder ohne Compose:
+Or without Compose:
 
 ```bash
-docker build -t mmo-vault:1.7.1 .
+docker build -t mmo-vault:1.8.0 .
 docker run -d --name mmo-vault --restart unless-stopped \
   -p 127.0.0.1:4080:8080 \
   --read-only --tmpfs /tmp --cap-drop ALL \
   --security-opt no-new-privileges:true \
-  mmo-vault:1.7.1
+  mmo-vault:1.8.0
 ```
 
-Port und Bind-Adresse lassen sich ohne Änderung der compose.yaml setzen:
+Port and bind address can be set without editing compose.yaml:
 
 ```bash
 VAULT_PORT=4080 VAULT_BIND=127.0.0.1 docker compose up -d
 ```
 
-### Auf einem Server installieren
+### Installing on a server
 
-Es gibt keinen Build-Schritt und keine Registry-Abhängigkeit — vier Dateien reichen:
+There is no build step and no registry dependency — four files are enough:
 
 ```bash
-# Auf dem Server
+# On the server
 mkdir -p /opt/mmo-vault && cd /opt/mmo-vault
 
-# Vom Arbeitsplatz aus übertragen (Build-Kontext, ~140 KB)
+# Transferred from the workstation (build context, ~140 KB)
 rsync -av --relative \
   ./Dockerfile ./compose.yaml ./docker/nginx.conf ./mmo_vault/public_html/ \
   server:/opt/mmo-vault/
 
-# Auf dem Server bauen und starten
+# Build and start on the server
 cd /opt/mmo-vault
 docker compose up -d --build
 ```
 
-Wer auf dem Server nicht bauen will, überträgt stattdessen das fertige Abbild:
+If you would rather not build on the server, transfer the finished image instead:
 
 ```bash
-docker save mmo-vault:1.7.1 | gzip | ssh server 'gunzip | docker load'
+docker save mmo-vault:1.8.0 | gzip | ssh server 'gunzip | docker load'
 ```
 
-**Start nach dem Reboot** kommt aus `restart: unless-stopped` in der compose.yaml — das greift aber nur, wenn der Docker-Dienst selbst beim Booten startet:
+**Starting after a reboot** comes from `restart: unless-stopped` in compose.yaml — but that only takes effect if the Docker service itself starts at boot:
 
 ```bash
 sudo systemctl enable --now docker
-systemctl is-enabled docker        # muss "enabled" sagen
+systemctl is-enabled docker        # must say "enabled"
 ```
 
-Damit braucht es keine eigene systemd-Unit. `unless-stopped` heißt: nach einem Absturz oder Reboot kommt der Container von selbst zurück, nach einem bewussten `docker compose stop` bleibt er aus.
+No separate systemd unit is needed. `unless-stopped` means: after a crash or reboot the container comes back on its own, after a deliberate `docker compose stop` it stays down.
 
-### Nur von innen erreichbar
+### Reachable only from inside
 
-Die Bindung an `127.0.0.1` in der compose.yaml ist die eigentliche Zugriffsbeschränkung — nicht die Firewall:
+Binding to `127.0.0.1` in compose.yaml is the actual access restriction — not the firewall:
 
-> **Docker umgeht ufw und firewalld.** Bei einer Freigabe wie `-p 4080:8080` (ohne Adresse) trägt Docker eigene iptables-Regeln **vor** die Ketten der Firewall ein. Der Port wäre dann aus dem Netz erreichbar, obwohl `ufw status` ihn als gesperrt anzeigt. Mit `127.0.0.1:4080:8080` entsteht die Regel gar nicht.
+> **Docker bypasses ufw and firewalld.** With a publication such as `-p 4080:8080` (no address), Docker inserts its own iptables rules **ahead of** the firewall's chains. The port would then be reachable from the network even though `ufw status` shows it as blocked. With `127.0.0.1:4080:8080` the rule is never created.
 
-Prüfen lässt sich das am Listen-Socket — die Adresse muss `127.0.0.1` sein, nicht `0.0.0.0`:
+This can be verified on the listening socket — the address must be `127.0.0.1`, not `0.0.0.0`:
 
 ```bash
 ss -tlnp | grep 4080
-# richtig: 127.0.0.1:4080     falsch: 0.0.0.0:4080 oder *:4080
-curl -sI http://127.0.0.1:4080/ | head -1        # von innen: 200
-curl -sI --max-time 3 http://<server-ip>:4080/   # von außen: keine Verbindung
+# correct: 127.0.0.1:4080     wrong: 0.0.0.0:4080 or *:4080
+curl -sI http://127.0.0.1:4080/ | head -1        # from inside: 200
+curl -sI --max-time 3 http://<server-ip>:4080/   # from outside: no connection
 ```
 
-Der Reverse Proxy auf demselben Host zeigt dann auf `http://127.0.0.1:4080`. Läuft er in einem eigenen Container, erreicht er die Host-Loopback-Adresse **nicht** — in dem Fall die `ports`-Freigabe ganz entfernen, beide Dienste in dasselbe Docker-Netz legen und den Proxy auf `http://mmo-vault:8080` zeigen lassen. Die nötigen Zeilen stehen kommentiert in der [compose.yaml](compose.yaml); ohne veröffentlichten Port ist der Dienst dann von außen strukturell nicht erreichbar.
+The reverse proxy on the same host then points to `http://127.0.0.1:4080`. If it runs in a container of its own, it can **not** reach the host loopback address — in that case remove the `ports` publication entirely, put both services on the same Docker network and point the proxy at `http://mmo-vault:8080`. The required lines are commented out in [compose.yaml](compose.yaml); without a published port the service is structurally unreachable from outside.
 
-Ausgeliefert wird [mmo_vault/public_html/](mmo_vault/public_html/); Index ist `mmo_vault.html`, konfiguriert in [docker/nginx.conf](docker/nginx.conf). Das Image enthält nginx und diese eine Datei — keinen Quellcode, keine Dokumentation, keinen Build-Schritt.
+What gets served is [mmo_vault/public_html/](mmo_vault/public_html/); the index is `mmo_vault.html`, configured in [docker/nginx.conf](docker/nginx.conf). The image contains nginx and this one file — no source code, no documentation, no build step.
 
-Der Container läuft als unprivilegierter Benutzer, lauscht intern auf 8080 (veröffentlicht als 4080), mit read-only Wurzeldateisystem, ohne Capabilities und mit `no-new-privileges`. Der Server setzt zusätzlich `frame-ancestors 'none'` als echten HTTP-Header — im `<meta>`-Tag der Anwendung wird diese Direktive vom Browser ignoriert.
+The container runs as an unprivileged user, listens internally on 8080 (published as 4080), with a read-only root filesystem, without capabilities and with `no-new-privileges`. The server additionally sets `frame-ancestors 'none'` as a real HTTP header — inside the application's `<meta>` tag that directive is ignored by the browser.
 
-### Hinter dem Reverse Proxy
+### Behind the reverse proxy
 
-Der Dienst ist als Backend gedacht: der Proxy terminiert TLS und leitet auf `mmo-vault:8080` weiter. Läuft der Proxy auf demselben Host, passt die Loopback-Freigabe aus [compose.yaml](compose.yaml). Läuft er in einem eigenen Container, die Freigabe entfernen und beide Dienste in dasselbe Docker-Netz legen — die nötigen Zeilen stehen kommentiert in der compose.yaml.
+The service is meant to be a backend: the proxy terminates TLS and forwards to `mmo-vault:8080`. If the proxy runs on the same host, the loopback publication from [compose.yaml](compose.yaml) fits. If it runs in its own container, remove the publication and put both services on the same Docker network — the required lines are commented out in compose.yaml.
 
-Zwei Dinge gehören auf den Proxy, nicht in dieses Image: **HSTS** (`Strict-Transport-Security`) und, falls die echten Client-IPs im Log stehen sollen, `X-Forwarded-For` — der passende `set_real_ip_from`-Block liegt kommentiert in [docker/nginx.conf](docker/nginx.conf). Alle übrigen Security-Header setzt nginx selbst und sie gehen unverändert durch den Proxy.
+Two things belong on the proxy, not in this image: **HSTS** (`Strict-Transport-Security`) and, if the real client IPs should appear in the log, `X-Forwarded-For` — the matching `set_real_ip_from` block is commented out in [docker/nginx.conf](docker/nginx.conf). All other security headers are set by nginx itself and pass through the proxy unchanged.
 
-> **HTTPS ist Pflicht, nicht Komfort.** Browser stellen `crypto.subtle` **nur in einem Secure Context** bereit. Über `http://` auf einer LAN-IP oder Domain fehlt die Web-Crypto-API vollständig — der Vault ließe sich weder anlegen noch entsperren. `http://localhost` gilt als sicher, alles andere nicht.
+> **HTTPS is mandatory, not a convenience.** Browsers only expose `crypto.subtle` **in a secure context**. Over `http://` on a LAN IP or domain the Web Crypto API is missing entirely — the vault could neither be created nor unlocked. `http://localhost` counts as secure, nothing else does.
 
-Die Anwendung erkennt das beim Laden und zeigt statt eines kryptischen Fehlers einen klaren Hinweis, mit gesperrten Bedienelementen.
+The application detects this on load and shows a clear notice instead of a cryptic error, with the controls disabled.
 
-### Was das Ausliefern nicht ändert
+### What deployment does not change
 
-Der Server sieht nur die Anwendungsdatei. Vault-Dateien liegen weiter ausschließlich beim Anwender: sie werden im Browser entschlüsselt und über den Datei-Dialog gespeichert — nie hochgeladen. Die CSP mit `connect-src 'none'` verhindert, dass die Seite überhaupt eine Verbindung zurück aufbauen kann.
+The server only ever sees the application file. Vault files stay exclusively with the user: they are decrypted in the browser and saved through the file dialog — never uploaded. The CSP with `connect-src 'none'` prevents the page from opening any connection back at all.
 
 ---
 
-## Was drin ist
+## What's inside
 
-- **AES-256-GCM**, Schlüssel per PBKDF2-HMAC-SHA256 mit 600.000 Iterationen (OWASP-Empfehlung), 16-Byte-Salt, eigener 96-Bit-IV je Block
-- **Zwei Eintragstypen** — Zugang (URL, Benutzername, Passwort, 2FA, Notizen) und Freitext
-- **2FA/TOTP** nach RFC 6238, inklusive 8-stelliger sowie SHA-256/SHA-512-Konten. QR-Codes lassen sich als Bild importieren, über die native `BarcodeDetector`-API
-- **Dateianhänge** in eigenen verschlüsselten Blöcken — sie werden erst beim Herunterladen entschlüsselt, nicht schon beim Entsperren
-- **Tags, Volltextsuche und Typfilter**, dazu Feldfilter in der Suche: `id=42`, `tag=arbeit`, `typ=freitext`, `benutzer=admin`, `titel=bank` — beliebig kombinierbar. Werte mit Leerzeichen in Anführungszeichen: `tag="mein tag"`; ein Zitat ohne Schlüssel sucht die Phrase
-- **Fortlaufende Eintragsnummer** auf jeder Karte; Antippen kopiert den Suchausdruck
-- **Deep-Link** über `#search=id%3D42` — als Fragment, damit der Suchbegriff nicht im Serverlog landet
-- **Einträge duplizieren**, inklusive eigenständiger Kopien der Anhänge
-- **CSV-Import** für Zugangs- und Freitext-Einträge. Feste Spaltennamen, im Dialog dokumentiert, mit herunterladbarer Vorlage:
+- **AES-256-GCM**, key derived with PBKDF2-HMAC-SHA256 at 600,000 iterations (OWASP recommendation), 16-byte salt, a dedicated 96-bit IV per block
+- **Two entry types** — login (URL, username, password, 2FA, notes) and free text
+- **2FA/TOTP** per RFC 6238, including 8-digit as well as SHA-256/SHA-512 accounts. QR codes can be imported as an image via the native `BarcodeDetector` API
+- **File attachments** in their own encrypted blocks — they are only decrypted on download, not already on unlock
+- **Tags, full-text search and type filter**, plus field filters in the search: `id=42`, `tag=work`, `typ=freitext`, `benutzer=admin`, `titel=bank` — freely combinable. Values containing spaces go in quotes: `tag="my tag"`; a quoted string without a key searches for that phrase
+- **Sequential entry number** on every card; tapping it copies the search expression
+- **Deep link** via `#search=id%3D42` — as a fragment, so the search term never ends up in the server log
+- **Duplicating entries**, including independent copies of the attachments
+- **CSV import** for login and free-text entries. Fixed column names, documented in the dialog, with a downloadable template:
 
-  | Spalte | Bedeutung |
+  | Column | Meaning |
   |---|---|
-  | `titel` | Pflichtfeld, Zeilen ohne Titel werden übersprungen |
-  | `typ` | `zugang` oder `freitext`; fehlt die Spalte, gilt die Auswahl im Dialog |
-  | `url`, `benutzer`, `passwort` | nur bei Zugang |
-  | `totp` | 2FA-Secret in Base32; ungültige werden verworfen und gemeldet |
-  | `notizen` | bei Freitext der Inhalt, als Markdown dargestellt |
-  | `tags` | mehrere mit senkrechtem Strich: `arbeit\|cloud` |
+  | `title` | Required; rows without a title are skipped |
+  | `type` | `zugang` or `freitext`; if the column is missing, the choice in the dialog applies |
+  | `url`, `username`, `password` | login entries only |
+  | `totp` | 2FA secret in Base32; invalid ones are discarded and reported |
+  | `notes` | for free text the content, rendered as Markdown |
+  | `tags` | several separated by a vertical bar: `work\|cloud` |
 
-  Englische Namen gehen ebenso (`title`, `type`, `username`, `password`, `notes`). Trennzeichen wird erkannt, Dubletten werden auf Wunsch übersprungen. Der Import ändert nur den Speicher — erst das Speichern schreibt in die Datei.
-- **Markdown in Freitext-Einträgen** — Überschriften, mehrstufige Listen, Tabellen mit Spaltenausrichtung, Code, Zitate, Links. Der Renderer baut ausschließlich DOM-Knoten, nie `innerHTML`; Bilder und eingebettetes HTML sind ausgeschlossen
-- **Passwortgenerator** ohne Modulo-Bias, ohne optisch verwechselbare Zeichen
-- **Auto-Sperre** mit sichtbarem Countdown, Vorgabe 5 Minuten
-- **Änderungsverlauf**, mitverschlüsselt, ohne Geheimnisse
-- **Deutsch und Englisch**, jederzeit umschaltbar — auch alle Fehlermeldungen
-- Bedienbar von 320 px bis Desktop
-
----
-
-## Sicherheitseigenschaften
-
-**Keine Netzwerkverbindung — technisch erzwungen.** Die Seite setzt `default-src 'none'; connect-src 'none'`. Kein CDN, keine Web Fonts, keine Telemetrie. Das ist nicht nur eine Zusage, sondern vom Browser durchgesetzt.
-
-**Beim Sperren wird aufgeräumt.** Schlüssel, Einträge, Verlauf, Datei-Handle und TOTP-Cache werden verworfen, alle Dialoge geschlossen und ihre Felder geleert, aufgedeckte Passwörter aus dem DOM entfernt. Auch dann, wenn die Auto-Sperre bei geöffnetem Bearbeitungsdialog zuschlägt.
-
-**Speichern ist überprüft.** Nach dem Schreiben wird die Datei zurückgelesen, verglichen und erneut geparst. Schlägt etwas fehl, wird der vorherige Inhalt wiederhergestellt und der Vault bleibt als ungespeichert markiert. Ein abgebrochener Speichern-Dialog löst keinen stillen Download aus.
-
-**Kopierte Geheimnisse verfallen.** Passwörter und 2FA-Codes verschwinden nach 30 Sekunden aus der Zwischenablage. URL und Benutzername bleiben liegen, damit die Anwendung keine fremden Kopier-Inhalte überschreibt.
-
-**Alte Dateien werden angehoben.** Wird ein Vault mit veralteter Iterationszahl geöffnet, hebt die Anwendung ihn direkt nach dem Entsperren auf den aktuellen Standard und markiert ihn zum Speichern.
-
-Das vollständige Bedrohungsmodell — samt dem, wogegen die Anwendung ausdrücklich **nicht** schützt — steht in [docs/requirements.md](docs/requirements.md#35-bedrohungsmodell).
+  Column names are English only — German names are not recognised. The delimiter is detected automatically, and duplicates can be skipped on request. The import only changes what is in memory — writing to the file still requires an explicit save.
+- **Markdown in free-text entries** — headings, nested lists, tables with column alignment, code, quotes, links. The renderer builds DOM nodes exclusively, never `innerHTML`; images and embedded HTML are excluded
+- **Password generator** without modulo bias and without visually ambiguous characters
+- **Auto-lock** with a visible countdown, 5 minutes by default
+- **Change history**, encrypted along with everything else, containing no secrets
+- **German and English**, switchable at any time — including all error messages
+- Usable from 320 px up to desktop
 
 ---
 
-## Wichtig vorher zu wissen
+## Security properties
 
-> **Backups sind Pflicht, nicht optional.** Die Anwendung versioniert nichts. Der Rollback-Schutz greift bei abgebrochenen Schreibvorgängen — nicht bei gelöschten Dateien, Datenträgerdefekten oder Sync-Konflikten.
+**No network connection — technically enforced.** The page sets `default-src 'none'; connect-src 'none'`. No CDN, no web fonts, no telemetry. That is not merely a promise but enforced by the browser.
 
-> **Es gibt keine Passwort-Wiederherstellung.** Kein Reset, keine Hintertür. Ist das Master-Passwort weg, sind die Daten weg.
+**Locking cleans up.** Keys, entries, history, file handle and TOTP cache are discarded, all dialogs are closed and their fields cleared, revealed passwords are removed from the DOM. Including when auto-lock strikes while an edit dialog is open.
 
-> **Cloud-Sync-Ordner:** Nextcloud, OneDrive und Dropbox tauschen Dateien intern aus, wodurch gespeicherte Datei-Verknüpfungen ins Leere zeigen können. Die Anwendung erkennt das und räumt die Verknüpfung auf. Paralleles Bearbeiten auf mehreren Geräten wird nicht unterstützt.
+**Saving is verified.** After writing, the file is read back, compared and parsed again. If anything fails, the previous content is restored and the vault stays marked as unsaved. A cancelled save dialog does not trigger a silent download.
 
-> **Ohne Gewähr.** Ein selbstgebautes Werkzeug für Eigenprojekte, keine geprüfte Sicherheitssoftware.
+**Copied secrets expire.** Passwords and 2FA codes disappear from the clipboard after 30 seconds. URL and username stay, so the application does not overwrite clipboard content it did not put there.
+
+**Old files are upgraded.** When a vault with an outdated iteration count is opened, the application raises it to the current standard right after unlocking and marks it for saving.
+
+The full threat model — including what the application explicitly does **not** protect against — is in [docs/requirements.md](docs/requirements.md#35-bedrohungsmodell).
 
 ---
 
-## Browser-Unterstützung
+## Important to know beforehand
 
-| Funktion | Chrome / Edge | Firefox | Safari |
+> **Backups are mandatory, not optional.** The application versions nothing. The rollback protection covers interrupted writes — not deleted files, storage failures or sync conflicts.
+
+> **There is no password recovery.** No reset, no back door. If the master password is gone, the data is gone.
+
+> **Cloud sync folders:** Nextcloud, OneDrive and Dropbox swap files internally, which can leave stored file handles pointing at nothing. The application detects this and clears the handle. Editing in parallel on several devices is not supported.
+
+> **No warranty.** A self-built tool for personal projects, not audited security software.
+
+---
+
+## Browser support
+
+| Feature | Chrome / Edge | Firefox | Safari |
 |---|---|---|---|
-| Ver- und Entschlüsselung, TOTP | ✅ | ✅ | ✅ |
-| Direkt in Datei speichern (FSA) | ✅ | Download-Ersatz | Download-Ersatz |
-| Letzte Datei merken | ✅ | — | — |
-| QR-Code-Import (`BarcodeDetector`) | ✅ | — | — |
+| Encryption and decryption, TOTP | ✅ | ✅ | ✅ |
+| Saving directly into a file (FSA) | ✅ | download fallback | download fallback |
+| Remembering the last file | ✅ | — | — |
+| QR code import (`BarcodeDetector`) | ✅ | — | — |
 
-Fehlt eine optionale Fähigkeit, weicht die Anwendung aus und sagt es: Download statt Direktspeichern, manuelle Eingabe statt QR-Scan.
+If an optional capability is missing, the application falls back and says so: download instead of direct saving, manual entry instead of a QR scan.
 
 ---
 
-## Dateiformat
+## File format
 
-NDJSON, eine Zeile je Block — jede Zeile für sich parsbar:
+NDJSON, one line per block — each line parsable on its own:
 
 ```
 {"type":"header","format":"mmo-vault-v2","salt":"…","iterations":600000}
@@ -193,33 +202,35 @@ NDJSON, eine Zeile je Block — jede Zeile für sich parsbar:
 {"type":"file","id":"…","iv":"…","data":"…"}
 ```
 
-Der Header ist unverschlüsselt und enthält nur die Ableitungsparameter. Der Textblock trägt Einträge, Verlauf und Einstellungen. Anhänge liegen als eigene Blöcke daneben — deshalb geht das Entsperren schnell, auch wenn große Dateien im Vault stecken. Dateien im alten v1-Format werden gelesen und beim nächsten Speichern automatisch überführt.
+The header is unencrypted and contains nothing but the derivation parameters. The text block carries entries, history and settings. Attachments sit next to it as separate blocks — which is why unlocking stays fast even when the vault holds large files. Files in the old v1 format are read and converted automatically on the next save.
 
-Vollständige Spezifikation: [docs/requirements.md](docs/requirements.md#5-dateiformat).
+Full specification: [docs/requirements.md](docs/requirements.md#5-dateiformat).
 
 ---
 
-## Projektstruktur
+## Project structure
 
 ```
 mmo_vault/
 ├── mmo_vault/
 │   └── public_html/
-│       └── mmo_vault.html   Die vollständige Anwendung (= Auslieferverzeichnis)
+│       └── mmo_vault.html   The complete application (= served directory)
 ├── docker/
-│   └── nginx.conf           Statischer Server, Index auf mmo_vault.html
+│   └── nginx.conf           Static server, index set to mmo_vault.html
 ├── docs/
-│   └── requirements.md      Anforderungen, Dateiformat, Bedrohungsmodell, Abnahme
+│   ├── requirements.md      Requirements, file format, threat model, acceptance
+│   ├── login_screen.png     Screenshot: unlocking
+│   └── main_screen.png      Screenshot: main view
 ├── Dockerfile
 ├── compose.yaml
 ├── README.md
 └── LICENSE
 ```
 
-Kein Build, kein Paketmanager, kein Test-Runner. Wer etwas ändern will, öffnet die HTML-Datei in einem Editor.
+No build, no package manager, no test runner. To change something, open the HTML file in an editor.
 
 ---
 
-## Lizenz und Herkunft
+## Licence and origin
 
-Siehe [LICENSE](LICENSE). Entwickelt von Michael Müller als Teil der MMO-Toolreihe für Eigenprojekte.
+See [LICENSE](LICENSE). Developed by Michael Müller as part of the MMO tool series for personal projects.

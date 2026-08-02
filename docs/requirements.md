@@ -1,7 +1,7 @@
 # MMO Vault — Anforderungsspezifikation
 
-**Version:** 1.7.1
-**Stand:** 2026-07-28
+**Version:** 1.8.0
+**Stand:** 2026-08-02
 **Status:** Im Eigenbetrieb freigegeben. Alle automatisiert prüfbaren Kriterien aus Kapitel 9 sind verifiziert; die verbleibenden erfordern manuelle Durchführung und stehen dort als unmarkierte Kästchen. Diese Zahl wird hier bewusst nicht wiederholt, damit sie nicht veraltet.
 **Autor:** Michael Müller
 
@@ -11,7 +11,7 @@
 
 MMO Vault ist ein lokaler Passwortmanager, der vollständig als **eine einzelne HTML-Datei** ausgeliefert wird und ausschließlich im Browser des Anwenders läuft. Er verwaltet Zugangsdaten, Freitext-Notizen, 2FA-Secrets und Dateianhänge in einer verschlüsselten Datei, die der Anwender selbst besitzt und ablegt.
 
-Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.7.1. Es richtet sich an Entwicklung, Review und Abnahme.
+Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.8.0. Es richtet sich an Entwicklung, Review und Abnahme.
 
 ### 1.1 Nicht im Geltungsbereich
 
@@ -234,7 +234,7 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 | FUN-64a | Dasselbe gilt für „Vault erstellen" und „Master-Passwort ändern". Ohne Formular kann ein Passwortmanager ein neu vergebenes Passwort nicht anbieten und einen bereits gespeicherten Eintrag nach einem Wechsel nicht aktualisieren — dort stünde sonst dauerhaft das alte Passwort. |
 | FUN-64b | Abbrechen- und Zurück-Schaltflächen in diesen Formularen MÜSSEN `type="button"` tragen, sonst lösen sie ein Absenden aus. |
 | FUN-65 | Einträge MÜSSEN aus einer CSV-Datei importierbar sein, für beide Eintragstypen. |
-| FUN-66 | Die Spaltennamen sind **fest** und MÜSSEN im Import-Dialog selbst dokumentiert sein: `titel` (Pflicht), `typ`, `url`, `benutzer`, `passwort`, `totp`, `notizen`, `tags`. Englische Entsprechungen gelten ebenso. Reihenfolge beliebig, unbekannte Spalten werden ignoriert, fehlende bleiben leer. |
+| FUN-66 | Die Spaltennamen sind **fest und ausschließlich englisch** und MÜSSEN im Import-Dialog selbst dokumentiert sein: `title` (Pflicht), `type`, `url`, `username`, `password`, `totp`, `notes`, `tags`. Deutsche Bezeichnungen DÜRFEN NICHT erkannt werden — eine Schreibweise je Feld, damit Vorlage, Dialog und README übereinstimmen. Reihenfolge beliebig, unbekannte Spalten werden ignoriert, fehlende bleiben leer. |
 | FUN-67 | Eine Vorlagendatei MUSS herunterladbar sein, mit Semikolon und BOM, damit deutsches Excel sie samt Umlauten direkt korrekt öffnet. |
 | FUN-68 | Der Parser MUSS RFC 4180 beherrschen: Anführungszeichen, eingebettete Trennzeichen und Zeilenumbrüche, verdoppelte Quotes, CRLF. Das Trennzeichen (Komma, Semikolon, Tabulator) MUSS automatisch erkannt werden. |
 | FUN-69 | Zeilen mit bereits vorhandenem Titel MÜSSEN übersprungen werden können; die Voreinstellung ist „überspringen". Der Vergleich erfolgt ohne Berücksichtigung von Groß- und Kleinschreibung. |

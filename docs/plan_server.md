@@ -8,6 +8,11 @@ Dieses Dokument beschreibt den geplanten Umbau. Verbindlich für die Abnahme ist
 weiterhin [requirements.md](requirements.md); die dort nötigen Ergänzungen sind in
 Kapitel 10 aufgeführt.
 
+**Vorgelagert:** [plan_versioning.md](plan_versioning.md) (Dateiformat v3,
+Datensatz-Versionierung, Version 1.9.0). Die dort genannten Wechselwirkungen —
+Strukturprüfung auf `mmo-vault-v3`, Größenlimit, Konfliktfall — sind hier
+einzuarbeiten.
+
 ---
 
 ## 1. Ziel und Leitplanken

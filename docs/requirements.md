@@ -1,6 +1,6 @@
 # MMO Vault — Anforderungsspezifikation
 
-**Version:** 1.8.0
+**Version:** 1.9.0
 **Stand:** 2026-08-02
 **Status:** Im Eigenbetrieb freigegeben. Alle automatisiert prüfbaren Kriterien aus Kapitel 9 sind verifiziert; die verbleibenden erfordern manuelle Durchführung und stehen dort als unmarkierte Kästchen. Diese Zahl wird hier bewusst nicht wiederholt, damit sie nicht veraltet.
 **Autor:** Michael Müller
@@ -11,7 +11,7 @@
 
 MMO Vault ist ein lokaler Passwortmanager, der vollständig als **eine einzelne HTML-Datei** ausgeliefert wird und ausschließlich im Browser des Anwenders läuft. Er verwaltet Zugangsdaten, Freitext-Notizen, 2FA-Secrets und Dateianhänge in einer verschlüsselten Datei, die der Anwender selbst besitzt und ablegt.
 
-Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.8.0. Es richtet sich an Entwicklung, Review und Abnahme.
+Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.9.0. Es richtet sich an Entwicklung, Review und Abnahme.
 
 ### 1.1 Nicht im Geltungsbereich
 
@@ -22,9 +22,10 @@ Ausdrücklich **nicht** Bestandteil dieser Version:
 - Browser-Erweiterung, Autofill in fremden Seiten, Zwischenablage-Überwachung
 - Direkter Import der proprietären Exportformate anderer Passwortmanager (KeePass-XML, 1Password-1PUX). Ein CSV-Import mit festen Spaltennamen ist seit 1.7.0 enthalten (FUN-65 ff.); Exporte anderer Werkzeuge müssen vorher auf diese Spaltennamen gebracht werden.
 - Export in irgendein Format
-- Passwort-Historie pro Eintrag, Ablaufdatum, Breach-Abgleich
+- Ablaufdatum je Eintrag, Breach-Abgleich
 - HOTP (zählerbasierte Einmalpasswörter)
-- Automatische Backup-Rotation oder Versionierung der Vault-Datei
+- Automatische Backup-Rotation oder Versionierung der Vault-**Datei** als Ganzes. Versionen einzelner **Datensätze** sind seit 1.9.0 enthalten (FUN-73 ff.).
+- Automatisches Aufräumen alter Versionen. Nichts verfällt von selbst; gelöscht wird ausschließlich von Hand (FUN-82).
 
 ---
 
@@ -33,10 +34,12 @@ Ausdrücklich **nicht** Bestandteil dieser Version:
 | Begriff | Bedeutung |
 |---|---|
 | **Vault** | Die Gesamtheit der verschlüsselten Nutzdaten, gespeichert in einer Vault-Datei |
-| **Vault-Datei** | Datei im Format `mmo-vault-v2` (NDJSON), Endung `.json` |
+| **Vault-Datei** | Datei im Format `mmo-vault-v3` (NDJSON), Endung `.json` |
 | **Master-Passwort** | Das einzige Geheimnis, aus dem der Verschlüsselungsschlüssel abgeleitet wird |
 | **Eintrag** | Ein Datensatz vom Typ *Zugang* oder *Freitext* |
-| **Block** | Eine Zeile der Vault-Datei; entweder `header`, `text` oder `file` |
+| **Block** | Eine Zeile der Vault-Datei; `header`, `text`, `vers` oder `file` |
+| **Version** | Ein aufgehobener Stand eines Eintrags von **vor** einer Änderung |
+| **Grabstein** | Der Vermerk im `versionIndex`, der einen gelöschten Eintrag im Papierkorb auffindbar macht |
 | **FSA** | File System Access API (`showOpenFilePicker`, `showSaveFilePicker`) |
 | **Sperren** | Verwerfen aller Klartextdaten aus dem Speicher und Rückkehr zum Sperrbildschirm |
 
@@ -74,6 +77,8 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 | SEC-13 | Beim Sperren MÜSSEN aufgedeckte Passwörter und entschlüsselte Werte aus dem DOM entfernt werden (Kartenraster, Verlaufsliste, Tag-Leiste, Suchfeld). |
 | SEC-14 | Kopierte **Geheimnisse** (Passwort, 2FA-Code) MÜSSEN nach 30 Sekunden aus der Zwischenablage entfernt werden. Nicht-geheime Werte (URL, Benutzername) DÜRFEN NICHT automatisch gelöscht werden, um fremde Kopier-Inhalte nicht zu überschreiben. |
 | SEC-15 | Das Master-Passwort DARF NICHT über den Ableitungsvorgang hinaus gehalten werden. |
+| SEC-31 | Versionen sind Geheimnisse: sie MÜSSEN in denselben AES-256-GCM-Blöcken liegen wie die Einträge, beim Sperren aus Speicher und DOM verschwinden und beim Master-Passwort-Wechsel vollständig neu verschlüsselt werden. Die Abgrenzung zu SEC-26 ist wesentlich: der Änderungsverlauf bleibt geheimnisfrei, Versionen sind es ausdrücklich nicht. |
+| SEC-32 | Das Löschen von Versionen MUSS sofort wirken: alle Blöcke laden, die betroffenen Stände entfernen, den Rest beim nächsten Speichern neu schreiben. Ein Löschen, das erst später greift, wäre bei alten Passwörtern die falsche Zusage. |
 
 **Bekannte Grenze:** JavaScript erlaubt kein deterministisches Nullsetzen von Strings. Klartext kann bis zur nächsten Garbage Collection im Heap verbleiben. Gegen einen Angreifer mit Speicherzugriff auf dem laufenden Gerät schützt die Anwendung nicht (siehe Bedrohungsmodell).
 
@@ -116,6 +121,7 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 - Schwaches oder wiederverwendetes Master-Passwort. Die Iterationszahl erhöht die Kosten eines Offline-Angriffs, sie ersetzt keine Passwortstärke.
 - Manipulation der HTML-Datei selbst. Wer die Anwendungsdatei austauschen kann, kann beliebigen Code ausführen. Die Datei SOLL aus vertrauenswürdiger Quelle stammen und schreibgeschützt abgelegt werden.
 - Verlust des Master-Passworts. Es gibt **keine** Wiederherstellung, keine Hintertür, kein Reset.
+- Die verlängerte Lebensdauer abgelöster Geheimnisse. Ein gewechseltes Passwort bleibt im Verlauf lesbar — das ist der Zweck der Versionierung, erhöht aber den Schaden einer preisgegebenen Vault-Datei. Wer das nicht will, verwirft die betroffenen Versionen (FUN-82) oder schaltet die Historie über das Löschen ab.
 
 ---
 
@@ -242,6 +248,23 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 | FUN-71 | Der Import DARF nur den Speicher verändern und den Vault als ungespeichert markieren. So lässt sich ein misslungener Import durch Sperren ohne Speichern verwerfen. |
 | FUN-72 | Das Ergebnis MUSS die Zahl importierter, übersprungener und beanstandeter Zeilen nennen und darauf hinweisen, dass die CSV-Datei alle Passwörter im Klartext enthält und zu löschen ist. |
 
+### 4.9 Datensatz-Versionen
+
+| ID | Anforderung |
+|---|---|
+| FUN-73 | Bei jeder Änderung an einem Eintrag MUSS der **vorherige** Stand aufgehoben werden. Der aktuelle Stand steht im Textblock; eine Dopplung wäre überflüssig. |
+| FUN-74 | Eine Version DARF nur entstehen, wenn sich mindestens ein Feld tatsächlich geändert hat. Öffnen und Schließen des Dialogs ohne Änderung erzeugt weder Version noch „ungespeichert". |
+| FUN-75 | Auslöser sind: Bearbeiten (`edited`), Löschen (`deleted`) und Wiederherstellen (`restored`). Duplizieren und CSV-Import erzeugen **keine** Versionen. |
+| FUN-76 | Beim Entsperren DÜRFEN Versionsblöcke NICHT entschlüsselt werden. Der `versionIndex` im Textblock MUSS die Anzeige eines Zählers je Eintrag ohne Entschlüsselung ermöglichen. |
+| FUN-77 | Der Verlauf eines Eintrags MUSS je Stand Zeitstempel, Grund und die **Namen** der geänderten Felder zeigen. Werte erscheinen erst nach dem Aufklappen; Passwörter und 2FA-Secrets bleiben dabei verdeckt und unterliegen den Regeln aus SEC-13 und SEC-14. |
+| FUN-78 | Ein Stand MUSS vollständig oder feldweise wiederherstellbar sein. Das Wiederherstellen MUSS selbst eine Version anlegen und damit umkehrbar sein. |
+| FUN-79 | Der Zeitstempel einer Version ist zugleich die Sortierordnung und MUSS streng monoton vergeben werden. Zwei Änderungen in derselben Millisekunde lägen sonst gleichauf und die Reihenfolge wäre zufällig. |
+| FUN-80 | Gelöschte Einträge MÜSSEN in einem Papierkorb auffindbar und wiederherstellbar sein. Die Liste MUSS ohne Entschlüsselung auskommen. Ein wiederhergestellter Eintrag MUSS seine ursprüngliche laufende Nummer behalten, damit ein gespeicherter Deep-Link weiter auf denselben Eintrag zeigt. |
+| FUN-81 | Anhänge, die nur noch von einer aufbewahrten Version referenziert werden, DÜRFEN beim Speichern NICHT als verwaist bereinigt werden. Fehlt der Block dennoch, MUSS der Anhang beim Wiederherstellen übersprungen und die Zahl gemeldet werden — ein toter Verweis ist unzulässig. |
+| FUN-82 | Versionen und Grabsteine DÜRFEN NICHT automatisch verfallen. Löschen erfolgt ausschließlich von Hand: je Eintrag, als Auswahl mehrerer Einträge, nach Alter oder vollständig. Ein Schalter „jüngste Version je Eintrag behalten" MUSS vorhanden und voreingestellt sein. |
+| FUN-83 | Nach dem Speichern MUSS die Anwendung auf eine große Datei hinweisen (Vorgabe: ab 5 MB) und dabei den Anteil des Verlaufs nennen. Der Hinweis erscheint höchstens einmal je Sitzung. |
+| FUN-84 | Wird die letzte Version eines gelöschten Eintrags entfernt, MUSS auch sein Grabstein verschwinden — der Eintrag ist dann endgültig fort. |
+
 ### 4.8 Markdown in Freitext-Einträgen
 
 | ID | Anforderung |
@@ -264,7 +287,43 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 
 ## 5. Dateiformat
 
-### 5.1 Format v2 — `mmo-vault-v2`
+### 5.1 Format v3 — `mmo-vault-v3`
+
+Erweitert v2 um **einen** neuen Blocktyp und **zwei** Felder im Textblock. Alles Übrige ist unverändert.
+
+```
+{"type":"header","format":"mmo-vault-v3","salt":"<base64>","iterations":600000}
+{"type":"text","iv":"<base64>","data":"<base64>"}
+{"type":"vers","iv":"<base64>","data":"<base64>"}
+{"type":"file","id":"<att-id>","iv":"<base64>","data":"<base64>"}
+```
+
+**Versionsblock (`vers`)** — AES-256-GCM über eine Liste abgelöster Eintragsstände:
+
+```jsonc
+{ "v": [{
+  "id": "e…",                 // Eintrags-ID
+  "num": 42,                  // laufende Nummer zum Zeitpunkt der Ablösung
+  "ts": 1754132400000,        // Zeitstempel, zugleich Sortierordnung
+  "reason": "edited" | "deleted" | "restored",
+  "snapshot": { … }           // vollständiger Eintrag VOR der Änderung
+}] }
+```
+
+**Zusätzliche Felder im Textblock:**
+
+```jsonc
+{
+  "versionIndex": { "e…": { "n": 7, "last": 1754132400000, "deleted": true, "title": "…", "num": 42 } },
+  "versionAtt": ["<att-id>", "…"]
+}
+```
+
+`versionIndex` trägt nur Zähler, Zeitstempel und — bei gelöschten Einträgen — Grabsteindaten; keine Werte. `versionAtt` listet die Anhangs-IDs, die nur noch von einer Version gebraucht werden, damit deren Blöcke nicht als verwaist bereinigt werden.
+
+Beim Speichern wird **höchstens ein neuer** `vers`-Block angefügt; bestehende werden unverändert als Chiffrat übernommen. Aufgeräumt wird nur beim Löschen von Versionen und beim Master-Passwort-Wechsel, dann als ein einziger Block.
+
+### 5.2 Format v2 — `mmo-vault-v2`
 
 NDJSON: eine Zeile je Block, jede Zeile unabhängig parsbar.
 
@@ -296,15 +355,17 @@ Anhänge erscheinen hier **nur mit Metadaten**. Die Rohdaten liegen in eigenen `
 
 **Dateiblock** — je Anhang ein eigener AES-256-GCM-Block über `{"id":"<att-id>","b":"<base64-rohdaten>"}`. Die mitverschlüsselte ID bindet den Klartext an seinen Anhang.
 
-### 5.2 Format v1 (Legacy, nur lesend)
+### 5.3 Format v1 (Legacy, nur lesend)
 
-Ein einzelnes JSON-Objekt `{salt, iterations, iv, data}` mit allen Daten inklusive Anhängen in einem Block. Wird beim Laden erkannt und beim nächsten Speichern automatisch nach v2 überführt.
+Ein einzelnes JSON-Objekt `{salt, iterations, iv, data}` mit allen Daten inklusive Anhängen in einem Block. Wird beim Laden erkannt und beim nächsten Speichern automatisch ins Blockformat überführt.
 
-### 5.3 Kompatibilitätsregeln
+### 5.4 Kompatibilitätsregeln
 
 - Unbekannte Blocktypen MÜSSEN beim Lesen ignoriert werden.
 - Fehlende Eintragsfelder MÜSSEN auf dokumentierte Vorgabewerte fallen.
 - Ein `file`-Block ohne `id` im Klartext stammt aus einer Version vor 1.0 und wird ohne Bindungsprüfung akzeptiert.
+- v3 wird erst geschrieben, wenn der Vault mindestens eine Version enthält. Ein Vault ohne Historie bleibt v2 und damit mit älteren Anwendungsversionen verlustfrei bearbeitbar.
+- **Bekannte Grenze:** Weil unbekannte Blocktypen ignoriert werden, öffnet Version 1.8.0 eine v3-Datei anstandslos, verwirft beim Speichern aber sämtliche `vers`-Blöcke — kommentarlos. Das ist nicht nachträglich reparierbar, weil 1.8.0 bereits ausgeliefert ist; der Umstand MUSS in der README stehen.
 
 ---
 
@@ -442,6 +503,23 @@ Abgehakte Punkte sind nachweisbar geprüft — die Krypto-, Datenintegritäts-, 
 - [x] Ab 901 px entfällt das Sheet und die Werkzeuge liegen direkt in der Kopfleiste
 - [ ] Sichtprüfung der übersetzten Texte auf Umbrüche und Überläufe in allen Ansichten
 - [ ] Bedienung mit Tastatur allein von Sperrbildschirm bis Eintrag anlegen (manuelle Prüfung)
+
+### 9.9 Datensatz-Versionen
+
+- [x] Roundtrip v2 → v3: Datei mit Version schreiben, zurücklesen, Stand entschlüsseln
+- [x] Ohne Versionen bleibt das Format v2; erst die erste Version macht die Datei zu v3
+- [x] Bestehende `vers`-Blöcke werden beim erneuten Speichern als Chiffrat übernommen, nicht neu verschlüsselt
+- [x] Entsperren entschlüsselt keinen Versionsblock; der Zähler kommt aus dem Index
+- [x] Bearbeiten mit Änderung erzeugt genau eine Version, Öffnen ohne Änderung keine
+- [x] Feldvergleich erfasst Werte, Tags und Anhänge; `undefined` und `""` gelten als gleich
+- [x] Wiederherstellen ganz und feldweise; beides erzeugt selbst eine Version
+- [x] Papierkorb: Grabstein mit Titel und Nummer, Wiederherstellen mit erhaltener Nummer, Zähler wird nicht weitergedreht
+- [x] Anhang eines gelöschten Eintrags überlebt das Speichern; fehlender Block erzeugt keinen toten Verweis
+- [x] Verlauf nach Master-Passwort-Wechsel weiterhin lesbar, Wechsel kompaktiert auf einen Block
+- [x] Sammellöschen: je Eintrag, nach Alter, „jüngste behalten", Index danach vollständig neu aufgebaut
+- [x] Grabstein verschwindet mit seiner letzten Version, bleibt solange der Löschstand da ist
+- [x] Größenschätzung rechnet auf dem Chiffrat, ohne zu entschlüsseln
+- [ ] Größenwarnung an einer echten Datei jenseits 5 MB (bisher nur mit gesetztem Schwellwert geprüft)
 
 ### 9.5 Auslieferung
 

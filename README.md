@@ -2,7 +2,9 @@
 
 **A local password manager in a single HTML file.** No server, no installation, no dependencies — the vault is an encrypted file that belongs to you and that you store yourself.
 
-> **Version 1.8.0** · Functionally complete. Every acceptance criterion that can be checked automatically has been verified — cryptography against the RFC test vectors, save roundtrip with rollback, locking behaviour, container delivery, and layout from 320 px up to desktop.
+> **Version 1.9.0** · Functionally complete. Every acceptance criterion that can be checked automatically has been verified — cryptography against the RFC test vectors, save roundtrip with rollback, locking behaviour, record versioning, container delivery, and layout from 320 px up to desktop.
+>
+> **New in 1.9.0:** every change keeps the previous state of an entry. Old passwords and deleted entries can be brought back — offline as well, because the history lives in the same encrypted file. This introduces file format v3; see [File format](#file-format) for what that means for older versions of the application.
 >
 > **Six checks require manual work and are still open:** the auto-lock timeout, a visual check of the translations for line breaks, keyboard-only operation, functional testing in Firefox and Safari, fallback behaviour without the File System Access API and without `BarcodeDetector`, and testing against the reverse proxy of the target environment. The current state is tracked as a checklist in [docs/requirements.md](docs/requirements.md#9-abnahmekriterien).
 
@@ -36,12 +38,12 @@ docker compose up -d --build     # → http://127.0.0.1:4080/
 Or without Compose:
 
 ```bash
-docker build -t mmo-vault:1.8.0 .
+docker build -t mmo-vault:1.9.0 .
 docker run -d --name mmo-vault --restart unless-stopped \
   -p 127.0.0.1:4080:8080 \
   --read-only --tmpfs /tmp --cap-drop ALL \
   --security-opt no-new-privileges:true \
-  mmo-vault:1.8.0
+  mmo-vault:1.9.0
 ```
 
 Port and bind address can be set without editing compose.yaml:
@@ -71,7 +73,7 @@ docker compose up -d --build
 If you would rather not build on the server, transfer the finished image instead:
 
 ```bash
-docker save mmo-vault:1.8.0 | gzip | ssh server 'gunzip | docker load'
+docker save mmo-vault:1.9.0 | gzip | ssh server 'gunzip | docker load'
 ```
 
 **Starting after a reboot** comes from `restart: unless-stopped` in compose.yaml — but that only takes effect if the Docker service itself starts at boot:
@@ -126,7 +128,7 @@ The server only ever sees the application file. Vault files stay exclusively wit
 - **Two entry types** — login (URL, username, password, 2FA, notes) and free text
 - **2FA/TOTP** per RFC 6238, including 8-digit as well as SHA-256/SHA-512 accounts. QR codes can be imported as an image via the native `BarcodeDetector` API
 - **File attachments** in their own encrypted blocks — they are only decrypted on download, not already on unlock
-- **Tags, full-text search and type filter**, plus field filters in the search: `id=42`, `tag=work`, `typ=freitext`, `benutzer=admin`, `titel=bank` — freely combinable. Values containing spaces go in quotes: `tag="my tag"`; a quoted string without a key searches for that phrase
+- **Tags, full-text search and type filter**, plus field filters in the search: `id=42`, `tag=work`, `typ=freitext`, `benutzer=admin`, `titel=bank` (the filter keys are German, matching the interface) — freely combinable. Values containing spaces go in quotes: `tag="my tag"`; a quoted string without a key searches for that phrase
 - **Sequential entry number** on every card; tapping it copies the search expression
 - **Deep link** via `#search=id%3D42` — as a fragment, so the search term never ends up in the server log
 - **Duplicating entries**, including independent copies of the attachments
@@ -143,6 +145,9 @@ The server only ever sees the application file. Vault files stay exclusively wit
 
   Column names are English only — German names are not recognised. The delimiter is detected automatically, and duplicates can be skipped on request. The import only changes what is in memory — writing to the file still requires an explicit save.
 - **Markdown in free-text entries** — headings, nested lists, tables with column alignment, code, quotes, links. The renderer builds DOM nodes exclusively, never `innerHTML`; images and embedded HTML are excluded
+- **Record versions** — every change keeps the state *before* it. Each card shows `History (n)`; the dialog lists what changed field by field, reveals old values on demand and restores them either wholesale or one field at a time. Restoring keeps a version of its own and can therefore be undone
+- **Trash** for deleted entries. Restoring brings back the original sequential number, so an old deep link points at the same entry again
+- **Nothing expires on its own.** Versions and deleted entries are kept until you remove them. Instead of a deadline, the application warns once the file grows past 5 MB and shows how much of it is history — **Manage versions** in the menu deletes in bulk, per entry, by age, or everything, optionally keeping the newest state of each entry
 - **Password generator** without modulo bias and without visually ambiguous characters
 - **Auto-lock** with a visible countdown, 5 minutes by default
 - **Change history**, encrypted along with everything else, containing no secrets
@@ -160,6 +165,8 @@ The server only ever sees the application file. Vault files stay exclusively wit
 **Saving is verified.** After writing, the file is read back, compared and parsed again. If anything fails, the previous content is restored and the vault stays marked as unsaved. A cancelled save dialog does not trigger a silent download.
 
 **Copied secrets expire.** Passwords and 2FA codes disappear from the clipboard after 30 seconds. URL and username stay, so the application does not overwrite clipboard content it did not put there.
+
+**Versions are secrets and are treated as such.** Kept states live in the same AES-256-GCM blocks as everything else, disappear on locking, and are re-encrypted along with everything else when the master password changes. The separate change history stays free of secrets, as before. Worth knowing: a password that was replaced remains readable in the history — that is the point of the feature, but it extends how long a compromised password lives on in the file. The entry dialog offers to discard the affected versions.
 
 **Old files are upgraded.** When a vault with an outdated iteration count is opened, the application raises it to the current standard right after unlocking and marks it for saving.
 
@@ -197,12 +204,17 @@ If an optional capability is missing, the application falls back and says so: do
 NDJSON, one line per block — each line parsable on its own:
 
 ```
-{"type":"header","format":"mmo-vault-v2","salt":"…","iterations":600000}
+{"type":"header","format":"mmo-vault-v3","salt":"…","iterations":600000}
 {"type":"text","iv":"…","data":"…"}
+{"type":"vers","iv":"…","data":"…"}
 {"type":"file","id":"…","iv":"…","data":"…"}
 ```
 
-The header is unencrypted and contains nothing but the derivation parameters. The text block carries entries, history and settings. Attachments sit next to it as separate blocks — which is why unlocking stays fast even when the vault holds large files. Files in the old v1 format are read and converted automatically on the next save.
+The header is unencrypted and contains nothing but the derivation parameters. The text block carries entries, history and settings. Versions and attachments sit next to it as separate blocks — which is why unlocking stays fast even with years of history and large files: neither is decrypted until something actually needs it. Files in the old v1 and v2 formats are read as they are.
+
+A vault stays **v2** until it holds its first version, so an unchanged file does not change its format.
+
+> **Careful with version 1.8.0 and older.** Those versions open a v3 file without complaint but drop every `vers` block when saving — the history is then gone, without a message. This cannot be fixed retroactively, because 1.8.0 has already shipped. Either update everywhere, or do not edit a v3 file with an older version.
 
 Full specification: [docs/requirements.md](docs/requirements.md#5-dateiformat).
 

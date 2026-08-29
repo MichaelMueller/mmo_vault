@@ -97,6 +97,10 @@ class User(Base):
     provider_subject: Mapped[Optional[str]] = mapped_column(String(255))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     last_login_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime)
+    # Rate limiting lives on the account, not in memory: a restart must not
+    # hand an attacker a fresh budget.
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[Optional[dt.datetime]] = mapped_column(DateTime)
 
     groups: Mapped[list[Group]] = relationship(
         secondary="user_group", back_populates="members"
@@ -157,6 +161,24 @@ class Session(Base):
     enrollment_only: Mapped[bool] = mapped_column(Boolean, default=False)
     ip: Mapped[str] = mapped_column(String(64), default="")
     user_agent: Mapped[str] = mapped_column(String(255), default="")
+
+
+class WebAuthnChallenge(Base):
+    """A challenge handed out and waiting to come back.
+
+    Kept in the database rather than in memory: with more than one worker an
+    in-process dictionary would send every second attempt to a process that has
+    never seen the challenge.
+    """
+
+    __tablename__ = "webauthn_challenge"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    challenge: Mapped[bytes] = mapped_column(LargeBinary)
+    purpose: Mapped[str] = mapped_column(String(16))  # 'register' | 'authenticate'
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("user.id"))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime)
 
 
 class Vault(Base):

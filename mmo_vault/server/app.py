@@ -9,10 +9,12 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
-from . import db
+from . import db, deps
 from .config import Config
+from .models import User
+from .routers import auth
 
 APP_VERSION = "2.0.0-dev"
 
@@ -38,8 +40,35 @@ def create_app(config: Config | None = None) -> FastAPI:
     )
     app.state.config = config
 
+    app.include_router(auth.router)
+
     @app.get("/api/health")
     def health() -> dict:
         return {"status": "ok", "version": APP_VERSION}
+
+    @app.get("/api/config")
+    def public_config() -> dict:
+        """What the sign-in page needs before anyone is signed in.
+
+        Deliberately says nothing about accounts - only which ways in exist.
+        """
+        return {
+            "server": True,
+            "rp_id": config.auth.rp_id,
+            "providers": [],
+        }
+
+    @app.get("/api/me")
+    def me(user: User = Depends(deps.require_full_user)) -> dict:
+        return {
+            "user": user.name,
+            "email": user.email,
+            "is_admin": user.is_admin,
+            "groups": [group.name for group in user.groups],
+            "credentials": [
+                {"label": c.label, "backup_eligible": c.backup_eligible}
+                for c in user.credentials
+            ],
+        }
 
     return app

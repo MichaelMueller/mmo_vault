@@ -1165,6 +1165,19 @@ h1.brand{
   </div>
 </div>
 
+<!-- ============ WRITE CONFLICT (SERVER MODE) ============ -->
+<div class="overlay" id="conflictOverlay">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="conflictTitle">
+    <h3 id="conflictTitle" data-i18n="conflict_h">Woanders geändert</h3>
+    <p style="font-size:13.5px; line-height:1.6; color:var(--on-surface-variant); margin:0 0 16px;" data-i18n="conflict_text">Der Vault wurde auf dem Server zwischenzeitlich geändert. Deine Änderungen sind noch im Speicher und werden nicht überschrieben.</p>
+    <div class="lock-actions">
+      <button class="btn btn-text" id="btnConflictCancel" data-i18n="cancel">Abbrechen</button>
+      <button class="btn btn-outline btn-block" id="btnConflictSaveAs" data-i18n="conflict_save_as">Als lokale Datei speichern</button>
+      <button class="btn btn-filled btn-block" id="btnConflictReload" data-i18n="conflict_reload" style="color:var(--error);">Neu laden, Änderungen verwerfen</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ MANAGE VERSIONS (BULK DELETE) ============ -->
 <div class="overlay" id="manageVersionsOverlay" data-dismissable="true">
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="manageVersionsTitle">
@@ -1393,6 +1406,15 @@ const I18N = {
     last_file_prefix: 'Letzte Datei: ',
     last_file_default: 'Letzte Datei laden',
     server_logout: 'Abmelden',
+    conflict_h: 'Woanders geändert',
+    conflict_text: 'Der Vault wurde auf dem Server zwischenzeitlich geändert. Deine Änderungen sind noch im Speicher und werden nicht überschrieben.',
+    conflict_save_as: 'Als lokale Datei speichern',
+    conflict_reload: 'Neu laden, Änderungen verwerfen',
+    server_readonly_locked: 'Wird gerade von {user} bearbeitet — nur lesen.',
+    server_empty_vault: '„{name}" ist noch leer — vergib ein Master-Passwort, um den Vault dort anzulegen.',
+    server_empty_readonly: 'Dieser Vault ist noch leer und du hast kein Schreibrecht.',
+    server_lock_lost: 'Die Bearbeitungssperre ist weg. Speichern ist nicht mehr möglich — sichere deine Änderungen als lokale Datei.',
+    toast_reloaded: 'Neu geladen.',
     server_or_local: 'oder lokale Datei',
     server_no_vaults: 'Für dieses Konto ist noch kein Vault freigegeben.',
     server_read_only: 'nur lesen',
@@ -1657,6 +1679,15 @@ const I18N = {
     last_file_prefix: 'Last file: ',
     last_file_default: 'Load last file',
     server_logout: 'Sign out',
+    conflict_h: 'Changed elsewhere',
+    conflict_text: 'The vault was changed on the server in the meantime. Your changes are still in memory and will not be overwritten.',
+    conflict_save_as: 'Save as a local file',
+    conflict_reload: 'Reload and discard changes',
+    server_readonly_locked: 'Currently being edited by {user} - read only.',
+    server_empty_vault: '"{name}" is still empty - choose a master password to create the vault there.',
+    server_empty_readonly: 'This vault is still empty and you have no write permission.',
+    server_lock_lost: 'The editing lock is gone. Saving is no longer possible - rescue your changes into a local file.',
+    toast_reloaded: 'Reloaded.',
     server_or_local: 'or a local file',
     server_no_vaults: 'No vault has been shared with this account yet.',
     server_read_only: 'read only',
@@ -2601,7 +2632,9 @@ document.getElementById('createForm').addEventListener('submit', async (e) => {
   state.nextNum = 1;
   state.autoLockMinutes = DEFAULT_AUTO_LOCK_MINUTES;
   addHistory('hist_vault_created', '');
-  state.source = null;
+  // A server slot that is still empty keeps its source: the vault is created
+  // here and belongs there. Anything else starts without a place to go.
+  if(!(state.source && state.source.kind === 'server')) state.source = null;
   state.dirty = true; // a freshly created vault is not in any file yet
   document.getElementById('newPassword').value = '';
   document.getElementById('newPasswordConfirm').value = '';
@@ -2807,6 +2840,15 @@ document.getElementById('fileInput').addEventListener('change', async (e) => {
    forbids any connection at all.
    ============================================================ */
 
+/* The injected adapter calls this when a heartbeat fails - the lock was broken
+   or expired. Saying so beats letting the next save fail. */
+window.onVaultLockLost = function(){
+  if(state.source && state.source.kind === 'server'){
+    state.source.writable = false;
+    showToast(t('server_lock_lost'));
+  }
+};
+
 function serverAdapter(){
   // Deliberately looked up on every call rather than cached once at load time:
   // the injected block may register itself later than this script runs.
@@ -2870,14 +2912,41 @@ async function openServerVault(vault){
   if(!adapter) return;
   const source = serverSource(vault, adapter);
   try{
-    const text = await source.read();
+    // The lock comes first, and before the branch: creating a vault in an empty
+    // slot is a write like any other, and without the lock the first save would
+    // be refused - after the master password had already been chosen.
+    if(source.writable && !vault.lockedBy){
+      try{
+        await adapter.acquireLock(vault.id);
+      }catch(err){
+        // Somebody else is editing. Not an error - the vault opens read-only.
+        source.writable = false;
+        setLockStatus(t('server_readonly_locked', { user: err.message }), 'info');
+      }
+    } else if(vault.lockedBy){
+      source.writable = false;
+    }
+
+    const result = await source.read();
+    if(result === null || result === undefined){
+      // The slot exists but holds nothing yet. The vault is created here, in
+      // the browser - the service cannot do it, it never sees the key.
+      if(!source.writable){
+        setLockStatus(t('server_empty_readonly'), 'error');
+        return;
+      }
+      state.source = source;
+      showCreateView();
+      setLockStatus(t('server_empty_vault', { name: vault.name }), 'info');
+      return;
+    }
     let parsed;
-    try{ parsed = parseVaultText(text); }
+    try{ parsed = parseVaultText(result); }
     catch(err){ setLockStatus(t('err_invalid_vault'), 'error'); return; }
     state.pendingVault = parsed;
     state.pendingSource = 'server';
     state.source = source;
-    setLockStatus(t('status_file_loaded') + vault.name, 'info');
+    if(source.writable) setLockStatus(t('status_file_loaded') + vault.name, 'info');
     showPasswordStep();
   }catch(err){
     setLockStatus(t('err_server_read') + (err.message || err), 'error');
@@ -2898,11 +2967,61 @@ async function saveToServer(jsonText){
   }catch(err){
     // A conflict is not a failure of the connection but a second writer. The
     // changes stay in memory and "unsaved" stays in place.
-    showToast(err && err.conflict ? t('err_server_conflict')
-                                  : t('err_server_write') + (err.message || err));
+    // A stale ETag means a second writer - the changes stay and the choice is
+    // the user's. A lost lock is something else entirely and gets its own words.
+    if(err && err.conflict) return await offerConflictChoice();
+    if(err && err.lockLost){
+      state.source.writable = false;
+      showToast(t('server_lock_lost'));
+      return false;
+    }
+    showToast(t('err_server_write') + (err.message || err));
     return false;
   }
 }
+
+/* ---------- Write conflict ----------
+   Three ways out, and none of them silently overwrites: reload and lose the
+   changes, rescue them into a local file, or leave everything as it is and
+   decide later. */
+
+const conflictOverlay = document.getElementById('conflictOverlay');
+let conflictResolve = null;
+
+function offerConflictChoice(){
+  return new Promise(resolve => {
+    conflictResolve = resolve;
+    conflictOverlay.classList.add('show');
+  });
+}
+
+function resolveConflict(choice){
+  if(!conflictResolve) return false;
+  conflictOverlay.classList.remove('show');
+  const resolve = conflictResolve;
+  conflictResolve = null;
+  resolve(choice);
+  return true;
+}
+
+document.getElementById('btnConflictCancel').onclick = () => resolveConflict(false);
+
+document.getElementById('btnConflictReload').onclick = async () => {
+  resolveConflict(false);
+  // Deliberately a full lock: re-reading into a running session would mix the
+  // discarded entries with the ones just loaded.
+  showToast(t('toast_reloaded'));
+  lockApp();
+};
+
+document.getElementById('btnConflictSaveAs').onclick = async () => {
+  resolveConflict(false);
+  // Away from the server source, into the file path - the changes are rescued
+  // rather than lost, and the server keeps the newer state.
+  state.source = null;
+  updateSourceLabel();
+  await saveToFile();
+};
 
 document.getElementById('btnServerLogout').onclick = async () => {
   const adapter = serverAdapter();
@@ -3121,6 +3240,9 @@ function closeAllDialogs(){
 }
 
 function lockApp(){
+  // Remembered before the state is cleared: the lock has to be given back, and
+  // afterwards nothing here knows which vault it belonged to any more.
+  const releasedSource = state.source;
   closeAllDialogs();
   // Discard everything that contains, or could contain, plaintext.
   state.key = null;
@@ -3167,7 +3289,12 @@ function lockApp(){
   autoLockDeadline = null;
   refreshRememberedFileButton();
   // The service session outlives the lock: the list stays, only the decrypted
-  // data is gone.
+  // data is gone. The editing lock does not - holding it while locked would
+  // block everyone else for no reason.
+  if(releasedSource && releasedSource.kind === 'server'){
+    const adapter = serverAdapter();
+    if(adapter) adapter.releaseLock(releasedSource.id);
+  }
   refreshServerVaults();
 }
 
@@ -3619,6 +3746,9 @@ function serverSource(vault, adapter){
     get etag(){ return etag; },
     async read(){
       const result = await adapter.readVault(vault.id);
+      // null means the slot is still empty - not an error, and not an empty
+      // file either.
+      if(result === null) return null;
       etag = result.etag;
       return result.text;
     },

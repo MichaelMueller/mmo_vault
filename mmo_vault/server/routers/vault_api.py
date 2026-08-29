@@ -376,6 +376,23 @@ def release_lock(
     return {"released": vaults.release(db, vault_id, request.headers.get(LOCK_HEADER, ""))}
 
 
+@router.post("/{vault_id}/lock/release-beacon")
+def release_lock_beacon(
+    vault_id: str,
+    token: str,
+    db: DbSession = Depends(deps.get_db),
+) -> dict:
+    """Releasing the lock when the tab goes away.
+
+    navigator.sendBeacon can only send a plain POST - no custom headers, so
+    neither the CSRF header nor the regular release endpoint are reachable from
+    there. That is acceptable here because the token itself is the proof: only
+    whoever holds the lock knows it, and all this does is give it up early.
+    Without this the next person would have to wait out the lifetime.
+    """
+    return {"released": vaults.release(db, vault_id, token)}
+
+
 # ------------------------------------------------------------------- history
 
 

@@ -234,8 +234,11 @@ def test_enabled_providers_show_up_before_sign_in(admin, config):
 def test_pages_route_by_session_state(admin, config):
     """Where a session lands is decided by what it may do."""
     assert admin.get("/admin").status_code == 200
+    # Since phase 6 the root serves the vault application - for administrators
+    # too. The administration keeps its own address.
     landing = admin.get("/", follow_redirects=False)
-    assert landing.headers["location"] == "/admin"
+    assert landing.status_code == 200
+    assert "window.mmoVaultServer" in landing.text
 
     with TestClient(create_app(config), base_url=ORIGIN) as anonymous:
         assert anonymous.get("/login").status_code == 200

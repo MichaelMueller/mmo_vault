@@ -12,11 +12,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session as DbSession
 
-from .. import deps, sessions
+from .. import deps, injection, sessions
 from ..config import Config
 from ..models import Provider, Session, User
 
@@ -78,11 +78,20 @@ def index(
     user = db.get(User, session.user_id)
     if user is not None and user.must_enroll_passkey:
         return RedirectResponse("/enroll", status_code=303)
-    # Until phase 6 delivers the vault application, administrators land in the
-    # administration and everyone else gets a plain notice.
-    if user is not None and user.is_admin:
-        return RedirectResponse("/admin", status_code=303)
+    # The application itself, with the two changes from injection.py. Not
+    # cached by the browser: it carries the adapter, and a stale copy would
+    # point at a session that no longer exists.
     return HTMLResponse(
-        "<p style='font-family:system-ui;padding:24px'>"
-        "Angemeldet. Die Vault-Anwendung folgt in Phase 6.</p>"
+        injection.render().html,
+        headers={"Cache-Control": "no-store"},
     )
+
+
+@router.get("/api/injection", response_class=PlainTextResponse)
+def show_injection() -> str:
+    """What gets added to the application, in plain text.
+
+    The point of the whole arrangement is that it stays checkable: two string
+    replacements, and this is the second one.
+    """
+    return injection.render().script

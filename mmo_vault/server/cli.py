@@ -211,7 +211,9 @@ def cmd_start(args: argparse.Namespace) -> int:
         workers=None if args.reload else config.server.workers,
         reload=args.reload,
         proxy_headers=config.server.proxy_headers,
-        forwarded_allow_ips="*" if config.server.proxy_headers else None,
+        forwarded_allow_ips=(
+            config.server.forwarded_allow_ips if config.server.proxy_headers else None
+        ),
     )
     return 0
 
@@ -233,10 +235,19 @@ def cmd_enroll(args: argparse.Namespace) -> int:
         if user is None:
             print(f"No account named '{args.user}'.", file=sys.stderr)
             return 1
+        if not user.is_active:
+            # Deliberately not reactivated on the side: disabling an account is
+            # a decision, and this command is about lost devices, not about
+            # undoing that decision.
+            print(
+                f"The account '{args.user}' is disabled. Enable it in the\n"
+                "administration first, then reopen enrollment.",
+                file=sys.stderr,
+            )
+            return 1
         user.password_hash = security.hash_password(password)
         user.must_enroll_passkey = True
         user.enroll_expires_at = security.enrollment_deadline(config.auth.enrollment_hours)
-        user.is_active = True
 
     print(f"Enrollment reopened for '{args.user}'.")
     print(f"One-time password: {password}")

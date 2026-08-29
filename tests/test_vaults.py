@@ -185,11 +185,18 @@ def test_nonsense_is_refused(admin, vault_id):
 
 
 def test_a_file_beyond_the_limit_is_refused(admin, vault_id, config):
+    """413 before the body is read in full - not 400 after it sat in memory.
+
+    The limit exists against memory exhaustion, so it has to bite while the
+    upload streams in, not once the whole thing has already arrived.
+    """
     share(admin, vault_id, "admin")
     token = lock(admin, vault_id).json()["token"]
     config.vault.max_size_bytes = 200
     padded = VAULT_V2 + "\n" + json.dumps({"type": "file", "id": "x", "iv": "A", "data": "B" * 300})
-    assert write(admin, vault_id, padded, "", token).status_code == 400
+    assert write(admin, vault_id, padded, "", token).status_code == 413
+    # And nothing was stored.
+    assert admin.get(f"/api/vaults/{vault_id}/content").status_code == 204
 
 
 def test_if_match_is_mandatory(admin, vault_id):

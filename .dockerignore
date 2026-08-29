@@ -12,7 +12,6 @@
 # Application data of a local installation. The container gets its own volume;
 # a database or configuration from the developer machine has no business in an
 # image - config.toml holds the session secret.
-mmo_vault/../var
 var
 
 # Should a real vault file ever end up in the served directory while

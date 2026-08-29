@@ -82,7 +82,15 @@ document.getElementById('passwordForm').onsubmit = async (event) => {
     location.href = result.enrollment_required ? '/enroll' : '/';
   }catch(err){
     // A backup code is entered in the same field: whoever has one has lost
-    // their device, and a second form would only be in the way.
+    // their device, and a second form would only be in the way. But only try
+    // it when the input LOOKS like a code - otherwise every typo in a password
+    // burns two failed attempts instead of one, and the account locks after
+    // three mistakes instead of five.
+    const looksLikeCode = /^[A-Za-z2-7]{5}-?[A-Za-z2-7]{5}$/.test(password.trim());
+    if(!looksLikeCode){
+      show('message', 'Anmeldung fehlgeschlagen.');
+      return;
+    }
     try{
       await api('/auth/backup-code', {
         method:'POST', body: JSON.stringify({ name, code: password })

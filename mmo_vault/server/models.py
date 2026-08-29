@@ -59,6 +59,8 @@ class Provider(Base):
 
 class Group(Base):
     __tablename__ = "group"
+    # Same reasoning as on User: group ids must never come back either.
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(64), unique=True)
@@ -111,6 +113,11 @@ class User(Base):
 
     __table_args__ = (
         UniqueConstraint("provider_id", "provider_subject", name="uq_user_provider_subject"),
+        # SQLite reuses rowids after a delete. vault_access references accounts
+        # by bare integer (it has to - user OR group), so a reused id would hand
+        # a brand-new account the shares of a deleted one. The delete endpoint
+        # cleans those rows up; this makes the id reuse impossible on top.
+        {"sqlite_autoincrement": True},
     )
 
 

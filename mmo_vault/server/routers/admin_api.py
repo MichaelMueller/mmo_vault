@@ -16,7 +16,20 @@ from sqlalchemy.orm import Session as DbSession
 
 from .. import deps, security, sessions
 from ..config import Config
-from ..models import Credential, Group, Provider, User, utcnow
+from ..models import (
+    AuditLog,
+    BackupCode,
+    Credential,
+    Generation,
+    Group,
+    Provider,
+    User,
+    Vault,
+    VaultAccess,
+    VaultLock,
+    WebAuthnChallenge,
+    utcnow,
+)
 
 router = APIRouter(prefix="/api", tags=["admin"])
 
@@ -242,7 +255,27 @@ def delete_user(
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown account")
     _protect_last_admin(db, user, "delete")
+
+    # Everything that references the account, spelled out in one place. Half of
+    # these have no relationship configured, so the unit of work cannot know -
+    # and SQLite hands the id out again after the delete. A leftover
+    # vault_access row would then quietly grant the NEXT account created the
+    # permissions of the deleted one. That is the bug this list prevents.
     sessions.revoke_all_for(db, user.id)
+    db.query(BackupCode).filter(BackupCode.user_id == user.id).delete()
+    db.query(WebAuthnChallenge).filter(WebAuthnChallenge.user_id == user.id).delete()
+    db.query(VaultLock).filter(VaultLock.user_id == user.id).delete()
+    db.query(VaultAccess).filter(
+        VaultAccess.subject_type == "user", VaultAccess.subject_id == user.id
+    ).delete()
+    # History keeps its rows and loses the name: the record matters, the link
+    # to a no-longer-existing author does not.
+    db.query(Vault).filter(Vault.created_by == user.id).update({Vault.created_by: None})
+    db.query(Generation).filter(Generation.author_id == user.id).update(
+        {Generation.author_id: None}
+    )
+    db.query(AuditLog).filter(AuditLog.actor_id == user.id).update({AuditLog.actor_id: None})
+
     db.delete(user)
     return {"ok": True}
 
@@ -353,7 +386,12 @@ def delete_group(
     group = db.get(Group, group_id)
     if group is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown group")
-    # Memberships go with it; the accounts stay.
+    # Memberships go with it; the accounts stay. The shares MUST go with it as
+    # well: group ids are reused, and a leftover row would grant the next group
+    # created the vaults of this one.
+    db.query(VaultAccess).filter(
+        VaultAccess.subject_type == "group", VaultAccess.subject_id == group.id
+    ).delete()
     group.members = []
     db.delete(group)
     return {"ok": True}

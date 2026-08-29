@@ -1411,6 +1411,7 @@ const I18N = {
     conflict_save_as: 'Als lokale Datei speichern',
     conflict_reload: 'Neu laden, Änderungen verwerfen',
     server_readonly_locked: 'Wird gerade von {user} bearbeitet — nur lesen.',
+    server_readonly_locked_unknown: 'Wird gerade bearbeitet — nur lesen.',
     server_empty_vault: '„{name}" ist noch leer — vergib ein Master-Passwort, um den Vault dort anzulegen.',
     server_empty_readonly: 'Dieser Vault ist noch leer und du hast kein Schreibrecht.',
     server_lock_lost: 'Die Bearbeitungssperre ist weg. Speichern ist nicht mehr möglich — sichere deine Änderungen als lokale Datei.',
@@ -1684,6 +1685,7 @@ const I18N = {
     conflict_save_as: 'Save as a local file',
     conflict_reload: 'Reload and discard changes',
     server_readonly_locked: 'Currently being edited by {user} - read only.',
+    server_readonly_locked_unknown: 'Currently being edited - read only.',
     server_empty_vault: '"{name}" is still empty - choose a master password to create the vault there.',
     server_empty_readonly: 'This vault is still empty and you have no write permission.',
     server_lock_lost: 'The editing lock is gone. Saving is no longer possible - rescue your changes into a local file.',
@@ -2920,8 +2922,12 @@ async function openServerVault(vault){
         await adapter.acquireLock(vault.id);
       }catch(err){
         // Somebody else is editing. Not an error - the vault opens read-only.
+        // The holder's name comes from the vault list; in the rare race where
+        // the lock appeared after the list was drawn, there is no name to show.
         source.writable = false;
-        setLockStatus(t('server_readonly_locked', { user: err.message }), 'info');
+        setLockStatus(vault.lockedBy
+          ? t('server_readonly_locked', { user: vault.lockedBy })
+          : t('server_readonly_locked_unknown'), 'info');
       }
     } else if(vault.lockedBy){
       source.writable = false;

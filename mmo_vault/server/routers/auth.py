@@ -11,6 +11,8 @@ The flow, in one place:
 
 from __future__ import annotations
 
+import secrets as _secrets
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DbSession
@@ -20,6 +22,11 @@ from ..config import Config
 from ..models import BackupCode, Session, User, utcnow
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# Verified against when no account (or no hash) exists, so the endpoint takes
+# the same time either way. Without it, the quick rejection of an unknown name
+# would tell an attacker which accounts exist.
+_TIMING_DUMMY_HASH = security.hash_password(_secrets.token_hex(16))
 
 
 # ------------------------------------------------------------------- payloads
@@ -82,11 +89,17 @@ def login(
     config: Config = Depends(deps.get_config),
 ) -> dict:
     user = db.query(User).filter(User.name == payload.name).one_or_none()
+    # The hash is verified on every path, against a dummy when there is nothing
+    # real - otherwise the response time gives away which accounts exist.
+    stored_hash = user.password_hash if user else None
+    password_matches = security.verify_password(
+        stored_hash or _TIMING_DUMMY_HASH, payload.password
+    ) and stored_hash is not None
     if user is None or not user.is_active or deps.account_locked(user):
         raise _generic_denial()
     if not deps.password_login_allowed(request, config, user):
         raise _generic_denial()
-    if not security.verify_password(user.password_hash, payload.password):
+    if not password_matches:
         _record_failure(db, user)
         raise _generic_denial()
 
@@ -169,6 +182,8 @@ def register_options(
 @router.post("/passkey/register/verify", dependencies=[Depends(deps.require_csrf_header)])
 def register_verify(
     payload: RegisterVerifyRequest,
+    request: Request,
+    response: Response,
     session: Session = Depends(deps.require_session),
     user: User = Depends(deps.require_user),
     db: DbSession = Depends(deps.get_db),
@@ -198,7 +213,12 @@ def register_verify(
         codes = security.generate_backup_codes()
         for code in codes:
             db.add(BackupCode(user_id=user.id, code_hash=security.hash_backup_code(code)))
-        sessions.promote(session)
+        # The session changes privilege here, so it changes identity: the old
+        # id - issued for a password - is revoked and a fresh one takes over.
+        # Anyone who captured the enrollment cookie holds a dead value now.
+        sessions.revoke(db, session)
+        fresh = sessions.create(db, config, user, enrollment_only=False, request=request)
+        sessions.attach_cookie(response, config, fresh)
 
     return {
         "backup_codes": codes,

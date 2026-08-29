@@ -32,6 +32,10 @@ class ServerConfig:
     # Only switch this on when a reverse proxy really sits in front. It makes
     # the service trust X-Forwarded-For, and that changes who counts as local.
     proxy_headers: bool = False
+    # Who is believed when they send forwarding headers. "*" would mean anyone,
+    # including a client talking to the service directly - keep it at the
+    # proxy's address(es).
+    forwarded_allow_ips: str = "127.0.0.1"
 
 
 @dataclass

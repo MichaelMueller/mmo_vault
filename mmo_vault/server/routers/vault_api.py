@@ -14,7 +14,9 @@ A lock that expired unnoticed therefore cannot cause damage.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
+import secrets
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -29,6 +31,37 @@ from ..models import AuditLog, Generation, Group, User, Vault, VaultAccess, Vaul
 router = APIRouter(prefix="/api/vaults", tags=["vaults"])
 
 LOCK_HEADER = "x-vault-lock"
+
+# Serialises compare-and-write. The ETag check and the file replacement are two
+# steps; two requests holding the SAME lock token - two tabs of one person -
+# could interleave between them, and one write would vanish without a trace.
+# One worker process is the deployment this is built for; the mutex covers it.
+_write_mutex = asyncio.Lock()
+
+
+async def _read_body_limited(request: Request, max_bytes: int) -> bytes:
+    """Reads the body without ever holding more than the limit.
+
+    request.body() first and validate() afterwards would mean a 10 GB upload
+    sits fully in memory before anyone looks at its size - uvicorn imposes no
+    body limit of its own. The Content-Length check alone is not enough either:
+    the header is client-supplied and absent on chunked uploads.
+    """
+    too_large = HTTPException(
+        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        detail=f"file is larger than the limit of {max_bytes} bytes",
+    )
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > max_bytes:
+        raise too_large
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > max_bytes:
+            raise too_large
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 class VaultCreate(BaseModel):
@@ -254,11 +287,15 @@ async def write_content(
     vault = _get_vault(db, vault_id)
     _require_permission(db, user, vault_id, vaults.READWRITE)
 
+    # Read (and bound) the body before anything else: a slow or oversized
+    # upload must not get past this line, let alone hold the mutex.
+    body_bytes = await _read_body_limited(request, config.vault.max_size_bytes)
+
     # 1. The lock: whoever writes has to hold it. Advisory, but it keeps two
     #    people from working past each other in the first place.
     lock = vaults.active_lock(db, vault_id)
-    token = request.headers.get(LOCK_HEADER)
-    if lock is None or lock.token != token:
+    token = request.headers.get(LOCK_HEADER) or ""
+    if lock is None or not secrets.compare_digest(lock.token, token):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="no valid lock - acquire one before writing",
@@ -273,21 +310,25 @@ async def write_content(
             status_code=status.HTTP_428_PRECONDITION_REQUIRED,
             detail="If-Match is required",
         )
-    current = storage.read(vault_id)
-    current_etag = storage.compute_etag(current) if current is not None else ""
-    if expected.strip('"') != current_etag:
-        raise HTTPException(
-            status_code=status.HTTP_412_PRECONDITION_FAILED,
-            detail="the vault was changed elsewhere in the meantime",
-        )
 
-    body = (await request.body()).decode("utf-8")
+    body = body_bytes.decode("utf-8")
     try:
         storage.validate(body, config.vault.max_size_bytes)
     except storage.InvalidVault as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)) from err
 
-    etag, size = storage.write(vault_id, body)
+    # Compare-and-write in one piece: between reading the current ETag and
+    # replacing the file, nobody else may slip in.
+    async with _write_mutex:
+        current = storage.read(vault_id)
+        current_etag = storage.compute_etag(current) if current is not None else ""
+        if expected.strip('"') != current_etag:
+            raise HTTPException(
+                status_code=status.HTTP_412_PRECONDITION_FAILED,
+                detail="the vault was changed elsewhere in the meantime",
+            )
+        etag, size = storage.write(vault_id, body)
+
     vault.etag = etag
     vault.size_bytes = size
     # Every save is kept. Nothing here ever deletes on its own.

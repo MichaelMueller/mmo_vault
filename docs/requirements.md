@@ -144,6 +144,8 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 | SEC-44 | Das Client-Secret eines Providers DARF nach dem Anlegen nicht mehr ausgegeben werden, auch nicht an Administratoren. |
 | SEC-45 | Der letzte aktive Administrator DARF weder herabgestuft noch gesperrt noch gelöscht werden. |
 
+**Bekannte Grenze:** Eine vollwertige Sitzung darf weitere Passkeys registrieren, ohne den vorhandenen erneut zu bestätigen. Wer eine laufende Sitzung übernimmt (Gerätediebstahl im entsperrten Zustand), kann sich damit einen eigenen, dauerhaften Zugang anlegen. Eine erneute Passkey-Bestätigung unmittelbar vor der Registrierung würde das schließen und ist für eine spätere Version vorgesehen; bis dahin gilt: Passkey-Liste im eigenen Konto gelegentlich ansehen, Unbekanntes löschen — jede Registrierung steht im Audit-Log.
+
 ### 3.5 Bedrohungsmodell
 
 **Wogegen die Anwendung schützt:**

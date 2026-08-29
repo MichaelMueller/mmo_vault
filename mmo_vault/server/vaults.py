@@ -12,6 +12,7 @@ expired unnoticed cannot cause a lost write, because a stale ETag is refused.
 from __future__ import annotations
 
 import datetime as dt
+import secrets
 
 from sqlalchemy.orm import Session as DbSession
 
@@ -109,7 +110,7 @@ def acquire(db: DbSession, config: Config, vault_id: str, user: User) -> tuple[V
 
 def renew(db: DbSession, config: Config, vault_id: str, token: str) -> VaultLock | None:
     lock = active_lock(db, vault_id)
-    if lock is None or lock.token != token:
+    if lock is None or not secrets.compare_digest(lock.token, token or ""):
         return None
     lock.expires_at = utcnow() + dt.timedelta(seconds=config.vault.lock_ttl_seconds)
     return lock
@@ -117,7 +118,7 @@ def renew(db: DbSession, config: Config, vault_id: str, token: str) -> VaultLock
 
 def release(db: DbSession, vault_id: str, token: str) -> bool:
     lock = active_lock(db, vault_id)
-    if lock is None or lock.token != token:
+    if lock is None or not secrets.compare_digest(lock.token, token or ""):
         return False
     db.delete(lock)
     return True

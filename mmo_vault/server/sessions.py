@@ -86,10 +86,6 @@ def revoke_all_for(db: DbSession, user_id: int) -> int:
     return int(count or 0)
 
 
-def promote(session: Session) -> None:
-    """Turns an enrollment session into a full one.
-
-    Called exactly once: after the passkey it was handed out for has actually
-    been registered.
-    """
-    session.enrollment_only = False
+# There is deliberately no promote(): a session that gains privilege gets a
+# NEW id (revoke + create in the registration endpoint). Upgrading the old one
+# in place would keep a cookie alive that was issued for a mere password.

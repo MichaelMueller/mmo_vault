@@ -45,6 +45,11 @@ class PasskeyError(Exception):
 def _store_challenge(
     db: DbSession, challenge: bytes, purpose: str, user_id: int | None
 ) -> str:
+    # Housekeeping on the way in: the options endpoints are reachable without a
+    # session, so anyone can create rows here. Purging on every store bounds
+    # the table to five minutes of request rate instead of letting it grow for
+    # the lifetime of the database.
+    purge_expired_challenges(db)
     record = WebAuthnChallenge(
         id=new_session_id(),
         challenge=challenge,

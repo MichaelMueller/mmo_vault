@@ -1,50 +1,108 @@
 # syntax=docker/dockerfile:1
 
-# MMO Vault ist eine einzelne statische HTML-Datei ohne Abhängigkeiten und ohne
-# Build-Schritt. Es gibt daher nichts zu kompilieren und keine Build-Stage —
-# das Image besteht aus nginx plus dem Auslieferverzeichnis.
+# Two ways to run MMO Vault, and one Dockerfile for both.
 #
-# Bauen:    docker build -t mmo-vault:1.9.0 .
-# Starten:  docker run --rm -p 127.0.0.1:4080:8080 mmo-vault:1.9.0
-# Aufrufen: http://127.0.0.1:4080/
+#   static   nginx plus the single HTML file. No Python, no database, no state.
+#            This is the whole application: a file the browser opens.
+#   server   the FastAPI service. Accounts, passkeys, shared vaults, history -
+#            and it serves the same HTML file, with the two changes from
+#            injection.py.
 #
-# WICHTIG: Über eine andere Adresse als localhost MUSS TLS davor stehen.
-# crypto.subtle gibt es nur in einem Secure Context; über http:// auf einer
-# LAN-IP oder Domain fehlt die Web-Crypto-API und der Vault lässt sich weder
-# anlegen noch entsperren. Details in der README.
+#   docker build --target static -t mmo-vault:2.0.0 .
+#   docker build --target server -t mmo-vault-server:2.0.0 .
+#
+# Or through compose, where the profile picks the target:
+#   docker compose up -d                     -> static
+#   docker compose --profile server up -d    -> server
+#
+# IMPORTANT for both: over any address other than localhost there MUST be TLS in
+# front. crypto.subtle only exists in a secure context, and passkeys need one
+# too - over http:// on a LAN address neither works. Details in the README.
 
-FROM nginx:1.27-alpine
+
+# =============================================================================
+# static - unchanged from the versions before the server existed
+# =============================================================================
+FROM nginx:1.27-alpine AS static
 
 LABEL org.opencontainers.image.title="MMO Vault" \
       org.opencontainers.image.description="Lokaler Passwortmanager als einzelne HTML-Datei" \
-      org.opencontainers.image.version="1.9.0" \
+      org.opencontainers.image.version="2.0.0" \
       org.opencontainers.image.licenses="Apache-2.0"
 
-# Ersetzt die Hauptkonfiguration komplett. Der Default-Server des Images erwartet
-# index.html und wird entfernt, damit er nicht über conf.d/ wieder hereinkommt.
+# Replaces the main configuration entirely. The image's default server expects
+# index.html and is removed so it cannot come back in through conf.d/.
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 RUN rm -f /etc/nginx/conf.d/default.conf \
  && rm -rf /usr/share/nginx/html
 
-# Auslieferverzeichnis: ein eigener Pfad statt /usr/share/nginx/html, weil dort im
-# Basisimage die nginx-Willkommensseite und 50x.html liegen — die würden sonst
-# unter /index.html erreichbar bleiben.
+# Its own directory rather than /usr/share/nginx/html: the base image keeps the
+# nginx welcome page and 50x.html there, and both would stay reachable.
 COPY mmo_vault/public_html/ /srv/mmo-vault/
 
-# Rechte explizit setzen: aus einem Windows-Build-Kontext kommt die Datei sonst mit
-# Ausführungsbit an. Verzeichnis und Datei brauchen unterschiedliche Modi — ein
-# gemeinsames COPY --chmod=644 nimmt dem Verzeichnis das x-Bit und nginx antwortet
-# dann auf alles mit 403.
+# Permissions set explicitly: from a Windows build context the file arrives with
+# the execute bit. Directory and file need different modes - a shared
+# COPY --chmod=644 takes the x bit off the directory and nginx answers 403.
 RUN chmod 755 /srv/mmo-vault && chmod 644 /srv/mmo-vault/*
 
-# Unprivilegiert ab Start — der Benutzer nginx (uid 101) existiert im Basisimage.
-# Zusammen mit dem Port 8080 aus der Konfiguration braucht der Container keine
-# Capabilities und läuft mit read-only Wurzeldateisystem (siehe compose.yaml).
+# Unprivileged from the start - the nginx user (uid 101) exists in the base
+# image. Together with port 8080 from the configuration the container needs no
+# capabilities and runs with a read-only root filesystem (see compose.yaml).
 USER nginx
-
 EXPOSE 8080
-
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1
-
 CMD ["nginx", "-g", "daemon off;"]
+
+
+# =============================================================================
+# builder - dependencies into a virtual environment
+# =============================================================================
+FROM python:3.13-slim AS builder
+
+# Only the requirements first: this layer is cached as long as they do not
+# change, and rebuilding after a code change stays quick.
+COPY requirements.txt /tmp/requirements.txt
+RUN python -m venv /venv \
+ && /venv/bin/pip install --no-cache-dir --upgrade pip \
+ && /venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt
+
+
+# =============================================================================
+# server - the FastAPI service
+# =============================================================================
+FROM python:3.13-slim AS server
+
+LABEL org.opencontainers.image.title="MMO Vault Server" \
+      org.opencontainers.image.description="Serverbetrieb mit Passkeys, Gruppen und Vault-Historie" \
+      org.opencontainers.image.version="2.0.0" \
+      org.opencontainers.image.licenses="Apache-2.0"
+
+COPY --from=builder /venv /venv
+
+WORKDIR /app
+COPY mmo_vault.py alembic.ini /app/
+COPY mmo_vault/ /app/mmo_vault/
+
+# The data directory is the one writable place. Everything else can stay
+# read-only, which is what compose.yaml relies on.
+RUN mkdir -p /app/var/vaults \
+ && chown -R 10001:10001 /app/var
+
+# A fixed, unprivileged uid rather than a named user: it has to match whoever
+# owns the volume on the host, and a name says nothing about that.
+USER 10001:10001
+
+ENV PATH="/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health').status==200 else 1)"
+
+# Setup runs as its own one-off, not on every start:
+#   docker compose run --rm mmo-vault-server setup
+ENTRYPOINT ["python", "/app/mmo_vault.py"]
+CMD ["start", "--host", "0.0.0.0"]

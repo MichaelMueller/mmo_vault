@@ -1,7 +1,7 @@
 # MMO Vault — Anforderungsspezifikation
 
-**Version:** 1.9.0
-**Stand:** 2026-08-02
+**Version:** 2.0.0
+**Stand:** 2026-08-29
 **Status:** Im Eigenbetrieb freigegeben. Alle automatisiert prüfbaren Kriterien aus Kapitel 9 sind verifiziert; die verbleibenden erfordern manuelle Durchführung und stehen dort als unmarkierte Kästchen. Diese Zahl wird hier bewusst nicht wiederholt, damit sie nicht veraltet.
 **Autor:** Michael Müller
 
@@ -9,22 +9,33 @@
 
 ## 1. Zweck und Geltungsbereich
 
-MMO Vault ist ein lokaler Passwortmanager, der vollständig als **eine einzelne HTML-Datei** ausgeliefert wird und ausschließlich im Browser des Anwenders läuft. Er verwaltet Zugangsdaten, Freitext-Notizen, 2FA-Secrets und Dateianhänge in einer verschlüsselten Datei, die der Anwender selbst besitzt und ablegt.
+MMO Vault ist ein Passwortmanager, der vollständig als **eine einzelne HTML-Datei** ausgeliefert wird und ausschließlich im Browser des Anwenders läuft. Er verwaltet Zugangsdaten, Freitext-Notizen, 2FA-Secrets und Dateianhänge in einer verschlüsselten Datei, die der Anwender selbst besitzt und ablegt.
 
-Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 1.9.0. Es richtet sich an Entwicklung, Review und Abnahme.
+Seit 2.0.0 gibt es **zwei Betriebsarten**:
+
+| Betriebsart | Was |
+|---|---|
+| **Lokal** | Die Datei per Doppelklick im Browser. Ohne Server, ohne Installation, ohne Netzwerkzugriff. |
+| **Server** | Ein FastAPI-Dienst mit Konten, Passkeys, Gruppen, geteilten Vaults und Dateihistorie. Er liefert dieselbe HTML-Datei aus und legt die Vault-Dateien ab. |
+
+Der Server ist **Ablage und Zugriffskontrolle**, nicht Kryptografie. Verschlüsselt und entschlüsselt wird ausschließlich im Browser; Master-Passwort und Schlüssel erreichen ihn nie.
+
+Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 2.0.0. Es richtet sich an Entwicklung, Review und Abnahme.
 
 ### 1.1 Nicht im Geltungsbereich
 
 Ausdrücklich **nicht** Bestandteil dieser Version:
 
-- Server-, Cloud- oder Synchronisationskomponente jeder Art
-- Mehrbenutzer-, Freigabe- oder Rechteverwaltung
+- Cloud-Anbindung an fremde Dienste, automatische Synchronisation zwischen Geräten
+- Serverseitige Entschlüsselung, Suche oder Vorschau — der Dienst sieht ausschließlich Chiffretext
+- Wiederherstellung des Master-Passworts über den Server
+- Zusammenführen paralleler Änderungen an einer Vault-Datei
 - Browser-Erweiterung, Autofill in fremden Seiten, Zwischenablage-Überwachung
 - Direkter Import der proprietären Exportformate anderer Passwortmanager (KeePass-XML, 1Password-1PUX). Ein CSV-Import mit festen Spaltennamen ist seit 1.7.0 enthalten (FUN-65 ff.); Exporte anderer Werkzeuge müssen vorher auf diese Spaltennamen gebracht werden.
 - Export in irgendein Format
 - Ablaufdatum je Eintrag, Breach-Abgleich
 - HOTP (zählerbasierte Einmalpasswörter)
-- Automatische Backup-Rotation oder Versionierung der Vault-**Datei** als Ganzes. Versionen einzelner **Datensätze** sind seit 1.9.0 enthalten (FUN-73 ff.).
+- Automatische Backup-Rotation oder Versionierung der Vault-**Datei** als Ganzes. Versionen einzelner **Datensätze** sind seit 2.0.0 enthalten (FUN-73 ff.).
 - Automatisches Aufräumen alter Versionen. Nichts verfällt von selbst; gelöscht wird ausschließlich von Hand (FUN-82).
 
 ---
@@ -41,6 +52,12 @@ Ausdrücklich **nicht** Bestandteil dieser Version:
 | **Version** | Ein aufgehobener Stand eines Eintrags von **vor** einer Änderung |
 | **Grabstein** | Der Vermerk im `versionIndex`, der einen gelöschten Eintrag im Papierkorb auffindbar macht |
 | **FSA** | File System Access API (`showOpenFilePicker`, `showSaveFilePicker`) |
+| **Dienst** | Der Serverbetrieb: FastAPI, Datenbank, Vault-Ablage |
+| **Gruppe** | Zusammenfassung von Konten, an die ein Vault freigegeben werden kann |
+| **Provider** | Ein externer Identitätsanbieter nach OIDC |
+| **Generation** | Ein aufbewahrter Stand einer ganzen Vault-Datei auf dem Server |
+| **Sitzung** | Anmeldung am Dienst; unabhängig davon, ob ein Vault entsperrt ist |
+| **Injektion** | Die zwei Änderungen, die der Dienst beim Ausliefern an der HTML-Datei vornimmt |
 | **Sperren** | Verwerfen aller Klartextdaten aus dem Speicher und Rückkehr zum Sperrbildschirm |
 
 Schlüsselwörter nach RFC 2119: **MUSS**, **SOLL**, **KANN**.
@@ -95,7 +112,9 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 
 | ID | Anforderung |
 |---|---|
-| SEC-20 | Die Anwendung DARF KEINE Netzwerkverbindung aufbauen. Dies MUSS per Content-Security-Policy erzwungen werden, nicht nur zugesichert: `default-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'`. |
+| SEC-20 | Die ausgelieferte Datei DARF KEINE Netzwerkverbindung aufbauen. Dies MUSS per Content-Security-Policy erzwungen werden, nicht nur zugesichert: `default-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'`. Die Datei DARF weder eine URL noch einen `fetch`-Aufruf enthalten. |
+| SEC-20a | Im Serverbetrieb DARF die Aufweichung auf `connect-src 'self'` **ausschließlich in der ausgelieferten Kopie** erfolgen. Die Datei auf dem Datenträger MUSS unverändert bleiben, damit sie heruntergeladen und offline mit unveränderter Zusage weiterverwendet werden kann. |
+| SEC-20b | Die Injektion MUSS auf genau zwei Stellen begrenzt sein — die CSP-Direktive und ein Skriptblock — und MUSS im Klartext abrufbar sein (`GET /api/injection`). Schlägt die Erkennung dieser Stellen fehl, MUSS die Auslieferung mit einem Fehler abbrechen, statt eine Anwendung ohne Adapter zu liefern. |
 | SEC-21 | Es DÜRFEN KEINE externen Ressourcen eingebunden werden — keine CDN-Skripte, Stylesheets, Web Fonts oder Bilder. |
 | SEC-22 | Es DARF KEINE Telemetrie, Fehlerübermittlung oder Nutzungsstatistik stattfinden. |
 | SEC-23 | Nutzergesteuerte Inhalte (Titel, Benutzername, Notizen, Tags, Anhangsnamen, Verlaufsdetails) MÜSSEN per `textContent` in das DOM geschrieben werden, nie per `innerHTML`. |
@@ -106,6 +125,24 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 | SEC-28 | Fehlt der Secure Context, MUSS die Anwendung dies beim Laden erkennen, verständlich melden und die Bedienelemente zum Anlegen und Entsperren sperren — statt später mit einem Laufzeitfehler abzubrechen. |
 | SEC-29 | Ein ausliefernder Server MUSS `frame-ancestors 'none'` als HTTP-Header setzen. Im `<meta>`-Tag wird die Direktive vom Browser ignoriert und ist dort nicht durchsetzbar. |
 | SEC-30 | Ein Container-Abbild DARF nur das Auslieferverzeichnis und die Serverkonfiguration enthalten — keinen Quellcode, keine Dokumentation und unter keinen Umständen eine Vault-Datei. |
+
+### 3.4a Serverbetrieb: Anmeldung und Zugriff
+
+| ID | Anforderung |
+|---|---|
+| SEC-33 | Reguläre Anmeldeverfahren sind **Passkey** (WebAuthn) und **OIDC**. Ein Passwort allein DARF KEIN reguläres Verfahren sein. |
+| SEC-34 | Passkeys MÜSSEN als Resident Keys mit erzwungener Nutzerverifikation angelegt werden. Die RP ID MUSS aus der Konfiguration stammen und DARF NICHT aus dem `Host`-Header abgeleitet werden. |
+| SEC-35 | Ein Konto ohne Passkey trägt `must_enroll_passkey`. Die daraus entstehende Sitzung DARF ausschließlich die Passkey-Registrierung aufrufen — keine Vaults, keine Verwaltung, keine ausgelieferte Anwendung. |
+| SEC-36 | Nach der ersten Registrierung MUSS der Passwort-Hash **verworfen** werden, nicht nur ignoriert. Das Registrierungsfenster MUSS ablaufen. |
+| SEC-37 | Passwörter und Ersatzcodes MÜSSEN mit **Argon2id** gehasht werden. Ersatzcodes sind einmalig verwendbar; ihre Einlösung MUSS erneut eine Registrierungspflicht auslösen. |
+| SEC-38 | Die Passwort-Anmeldung über Loopback ist optional und im Standard **aus**. Sie MUSS drei Bedingungen gemeinsam verlangen: Peer-Adresse ist Loopback, **kein** `X-Forwarded-For`- oder `Forwarded`-Header vorhanden, und die Einstellung ist gesetzt. Ein Forwarding-Header DARF NIE für eine Erlaubnis zählen, nur dagegen. |
+| SEC-39 | Fehlversuche MÜSSEN dauerhaft gezählt und nach einer Schwelle gesperrt werden. Der Zähler MUSS die Ablehnung überleben — eine Zählung, die mit der Transaktion zurückgerollt wird, ist wirkungslos. |
+| SEC-40 | Die OIDC-Identität ist `(issuer, sub)`. Die Mailadresse DARF nur bei der **ersten** Bindung und nur mit `email_verified` herangezogen werden. Es DARF KEINE Selbstregistrierung geben. |
+| SEC-41 | Sitzungen MÜSSEN serverseitig gehalten und damit widerrufbar sein. Das Sperren eines Kontos MUSS seine Sitzungen sofort beenden. |
+| SEC-42 | Zustandsändernde Endpunkte MÜSSEN zusätzlich zu `SameSite=Lax` den Header `X-Vault-Request` verlangen. |
+| SEC-43 | Der Dienst DARF Vault-Inhalte nur strukturell prüfen — Header, parsbare Zeilen, Größe. Niemals den Inhalt. |
+| SEC-44 | Das Client-Secret eines Providers DARF nach dem Anlegen nicht mehr ausgegeben werden, auch nicht an Administratoren. |
+| SEC-45 | Der letzte aktive Administrator DARF weder herabgestuft noch gesperrt noch gelöscht werden. |
 
 ### 3.5 Bedrohungsmodell
 
@@ -121,6 +158,10 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 - Schwaches oder wiederverwendetes Master-Passwort. Die Iterationszahl erhöht die Kosten eines Offline-Angriffs, sie ersetzt keine Passwortstärke.
 - Manipulation der HTML-Datei selbst. Wer die Anwendungsdatei austauschen kann, kann beliebigen Code ausführen. Die Datei SOLL aus vertrauenswürdiger Quelle stammen und schreibgeschützt abgelegt werden.
 - Verlust des Master-Passworts. Es gibt **keine** Wiederherstellung, keine Hintertür, kein Reset.
+- **Serverbetrieb:** Wer den Dienst kontrolliert, kann Vault-Dateien löschen, zurückrollen oder durch ältere Generationen ersetzen — und beliebigen Code in die ausgelieferte Anwendung injizieren. Lesen kann er die Vault-Dateien nicht. Verfügbarkeit und Integrität hängen damit am Server, Vertraulichkeit weiterhin allein am Master-Passwort. Wer den höchsten Anspruch hat, nutzt die lokale Datei.
+- **Geteilte Vaults:** Alle Schreibberechtigten kennen dasselbe Master-Passwort. Der Entzug einer Freigabe nimmt den Zugriff auf den Dienst, **nicht** die Kenntnis des Passworts. Nach einem Entzug gehört das Master-Passwort gewechselt.
+- **Wiederherstellung von Konten:** Wer Shell-Zugang zum Server hat, kann sich über `enroll` einen Zugang verschaffen. Das ist beabsichtigt und unvermeidbar — wer den Server kontrolliert, kontrolliert den Dienst.
+- Die Dateisperre ist beratend und keine Sicherheitsgrenze. Sie schützt vor versehentlichem Parallelbearbeiten, nicht vor einem böswilligen Client.
 - Die verlängerte Lebensdauer abgelöster Geheimnisse. Ein gewechseltes Passwort bleibt im Verlauf lesbar — das ist der Zweck der Versionierung, erhöht aber den Schaden einer preisgegebenen Vault-Datei. Wer das nicht will, verwirft die betroffenen Versionen (FUN-82) oder schaltet die Historie über das Löschen ab.
 
 ---
@@ -265,6 +306,32 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 | FUN-83 | Nach dem Speichern MUSS die Anwendung auf eine große Datei hinweisen (Vorgabe: ab 5 MB) und dabei den Anteil des Verlaufs nennen. Der Hinweis erscheint höchstens einmal je Sitzung. |
 | FUN-84 | Wird die letzte Version eines gelöschten Eintrags entfernt, MUSS auch sein Grabstein verschwinden — der Eintrag ist dann endgültig fort. |
 
+### 4.10 Serverbetrieb
+
+Alle Anforderungen dieses Kapitels gelten **nur** im Serverbetrieb. Die lokale
+Datei bleibt davon unberührt und funktioniert unverändert ohne Netzwerk.
+
+| ID | Anforderung |
+|---|---|
+| FUN-85 | Die Anwendungsdatei MUSS einen Erweiterungspunkt besitzen, über den ein injizierter Adapter den Serverbetrieb bereitstellt. Fehlt er, MUSS sich die Anwendung exakt wie zuvor verhalten. Die Datei DARF keinen Servercode enthalten. |
+| FUN-86 | Der Adapter MUSS **vor** dem Anwendungsskript eingefügt werden. Er meldet sich sonst zu spät, und die Vault-Liste bliebe leer, ohne dass etwas den Grund nennt. |
+| FUN-87 | Im Serverbetrieb MUSS der Sperrbildschirm die freigegebenen Vaults anzeigen. Nach dem Anklicken MUSS nur noch das Master-Passwort nötig sein. |
+| FUN-88 | Ein Vault wird von Administratoren angelegt und an **Benutzer oder Gruppen** freigegeben, mit `read` oder `readwrite`. Gilt mehr als eine Regel, gewinnt das weiter gehende Recht. |
+| FUN-89 | Ein neu angelegter Vault ist eine leere Hülle. Der Vault selbst entsteht im Browser des ersten Benutzers, der ein Master-Passwort vergibt. |
+| FUN-90 | Administratoren MÜSSEN alle Vaults sehen, um sie verwalten zu können, für den Inhalt aber einen eigenen Freigabeeintrag brauchen wie alle anderen. |
+| FUN-91 | Ein Schreibvorgang MUSS eine gültige Dateisperre **und** ein zutreffendes `If-Match` verlangen. Die Sperre ist beratend, der ETag maßgeblich: eine unbemerkt abgelaufene Sperre DARF NICHT zu einer verlorenen Änderung führen. |
+| FUN-92 | Die Sperre MUSS eine Laufzeit haben, per Heartbeat verlängert werden und beim Sperren der Anwendung freigegeben werden. Abgelaufene Sperren MÜSSEN faul ausgewertet werden. Erneutes Holen durch denselben Halter verlängert, statt zu scheitern. |
+| FUN-93 | Wer die Sperre nicht bekommt, MUSS den Vault **lesend** öffnen können, mit Angabe, wer ihn bearbeitet. Administratoren MÜSSEN eine Sperre brechen können; der bisherige Halter MUSS es beim nächsten Heartbeat erfahren. |
+| FUN-94 | Bei einem Schreibkonflikt MUSS die Anwendung drei Auswege anbieten: neu laden, als lokale Datei speichern, oder abbrechen. Ein stilles Überschreiben ist unzulässig, „ungespeichert" bleibt stehen. |
+| FUN-95 | Jeder erfolgreiche Schreibvorgang MUSS eine Generation aufheben. Generationen DÜRFEN NICHT automatisch verfallen. |
+| FUN-96 | Wiederherstellen MUSS eine **neue** Generation erzeugen, statt zurückzuspulen. Der Verlauf bleibt damit lückenlos und der Schritt umkehrbar. Generationsnummern DÜRFEN NICHT wiederverwendet werden. |
+| FUN-97 | Generationen MÜSSEN einzeln, unterhalb einer Nummer oder vollständig löschbar sein — ausschließlich durch Administratoren und ausschließlich von Hand. Die aktuelle Datei bleibt dabei unberührt. |
+| FUN-98 | Anzahl und Gesamtgröße der Generationen MÜSSEN angezeigt werden, mit einem Hinweis ab einer konfigurierbaren Marke. Die Marke ist eine Aussage, keine Grenze. |
+| FUN-99 | `mmo_vault.py` MUSS die Befehle `setup`, `start` und `enroll` bereitstellen. `setup` läuft interaktiv oder über Schalter, fragt RP ID und Origin ausdrücklich ab und legt den Administrator mit Passwort und Registrierungspflicht an. |
+| FUN-100 | `start` MUSS Konfiguration und Schemastand prüfen und mit einer verständlichen Meldung abbrechen, statt mit einem Stacktrace. |
+| FUN-101 | `enroll` MUSS ein neues Registrierungsfenster mit Einmalpasswort öffnen. Es ist der Weg zurück, wenn Passkeys und Ersatzcodes verloren sind. |
+| FUN-102 | Die Datenbank MUSS über SQLAlchemy abstrahiert sein, ohne Bindung an ein bestimmtes System. Vorgabe ist SQLite; Migrationen laufen über Alembic. |
+
 ### 4.8 Markdown in Freitext-Einträgen
 
 | ID | Anforderung |
@@ -358,6 +425,20 @@ Anhänge erscheinen hier **nur mit Metadaten**. Die Rohdaten liegen in eigenen `
 ### 5.3 Format v1 (Legacy, nur lesend)
 
 Ein einzelnes JSON-Objekt `{salt, iterations, iv, data}` mit allen Daten inklusive Anhängen in einem Block. Wird beim Laden erkannt und beim nächsten Speichern automatisch ins Blockformat überführt.
+
+### 5.3a Ablage im Serverbetrieb
+
+Der Dienst speichert die Datei unverändert, wie sie der Browser schickt:
+
+```
+var/vaults/<uuid>/current.ndjson       der aktuelle Stand
+var/vaults/<uuid>/history/000001.ndjson  je eine Generation, aufsteigend
+```
+
+Geschrieben wird über eine temporäre Datei plus `os.replace`, mit `fsync` davor.
+Der ETag ist der SHA-256 des Inhalts — zwei Schreibvorgänge mit gleichem Inhalt
+ergeben denselben Wert, und eine wiederhergestellte Generation ist als solche
+erkennbar.
 
 ### 5.4 Kompatibilitätsregeln
 
@@ -520,6 +601,32 @@ Abgehakte Punkte sind nachweisbar geprüft — die Krypto-, Datenintegritäts-, 
 - [x] Grabstein verschwindet mit seiner letzten Version, bleibt solange der Löschstand da ist
 - [x] Größenschätzung rechnet auf dem Chiffrat, ohne zu entschlüsseln
 - [ ] Größenwarnung an einer echten Datei jenseits 5 MB (bisher nur mit gesetztem Schwellwert geprüft)
+
+### 9.10 Serverbetrieb
+
+- [x] `setup` legt Konfiguration, Schema und Administrator an; ein zweiter Lauf verweigert ohne `--force`
+- [x] `start` bricht ohne Konfiguration und bei veraltetem Schema verständlich ab
+- [x] `enroll` öffnet ein neues Fenster; unbekanntes Konto meldet sich mit Fehlercode 1
+- [x] Passkey anlegen, damit anmelden, auch ohne Kontonamen; Challenge gilt genau einmal; fremder Passkey wird abgewiesen
+- [x] Die Bootstrap-Sitzung kann ausschließlich registrieren — alles andere antwortet 403
+- [x] Nach der Registrierung ist der Passwort-Hash verworfen und die Passwort-Anmeldung abgewiesen
+- [x] Ersatzcode löst eine erneute Registrierungspflicht aus und gilt nur einmal
+- [x] Loopback-Ausnahme greift nur ohne Proxy-Header und nur mit gesetzter Einstellung
+- [x] Fehlversuche werden gezählt und sperren das Konto; der Zähler überlebt die Ablehnung
+- [x] Gruppen, Freigaben an Benutzer und Gruppen, weiter gehendes Recht gewinnt
+- [x] Letzter Administrator lässt sich weder herabstufen noch sperren noch löschen; Sperren widerruft Sitzungen
+- [x] Client-Secret eines Providers wird nie ausgegeben; belegter Provider lässt sich nicht löschen
+- [x] OIDC bindet nur an vorhandene Konten und nur mit bestätigter Mailadresse; gebundenes Subjekt gewinnt gegen die Adresse
+- [x] Schreiben mit gültiger Sperre und ETag; veralteter ETag ergibt 412, fehlende Sperre 409, fehlendes If-Match 428
+- [x] Sperre: Zweiter bekommt sie nicht, erneutes Holen verlängert, Ablauf wird faul erkannt, Administrator kann brechen
+- [x] Atomares Schreiben: abgebrochener Schreibvorgang lässt die vorige Datei unversehrt, kein Rest im Verzeichnis
+- [x] Generationen bei jedem Schreibvorgang; Wiederherstellen erzeugt eine neue; Nummern werden nicht wiederverwendet
+- [x] Löschen einzeln, unterhalb einer Nummer und vollständig; aktuelle Datei bleibt
+- [x] Injektion: genau zwei Änderungen, Datei auf dem Datenträger unverändert, Adapter vor dem Anwendungsskript, `/api/injection` zeigt den Block
+- [x] Container: beide Ziele bauen, Server läuft unprivilegiert mit read-only Wurzeldateisystem, `config.toml` mit 0600
+- [ ] Anmeldung mit einem echten Passkey in Chrome, Firefox und Safari (die Testsuite nutzt einen selbst gebauten Authenticator)
+- [ ] OIDC-Anmeldung gegen Microsoft 365 und Google mit echten Zugangsdaten
+- [ ] Verhalten hinter dem Reverse Proxy der Zielumgebung, inklusive Loopback-Ausnahme
 
 ### 9.5 Auslieferung
 

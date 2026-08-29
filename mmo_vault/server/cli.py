@@ -168,6 +168,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
     print("\nNext:")
     print("  python mmo_vault.py start")
     print(f"  then sign in as '{admin_name}' at {config.auth.origin}")
+    print(f"  the administration lives at {config.auth.origin.rstrip(chr(47))}/admin")
     print(
         f"\nThe first session can do nothing but register a passkey, and the window\n"
         f"closes after {config.auth.enrollment_hours} hours. Reopen it with:\n"

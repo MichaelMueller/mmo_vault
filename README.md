@@ -1,12 +1,12 @@
 # MMO Vault
 
-**A local password manager in a single HTML file.** No server, no installation, no dependencies — the vault is an encrypted file that belongs to you and that you store yourself.
+**A password manager in a single HTML file.** No installation, no dependencies — the vault is an encrypted file that belongs to you and that you store yourself. Double-click it and it works, with no server anywhere.
 
-> **Version 1.9.0** · Functionally complete. Every acceptance criterion that can be checked automatically has been verified — cryptography against the RFC test vectors, save roundtrip with rollback, locking behaviour, record versioning, container delivery, and layout from 320 px up to desktop.
+> **Version 2.0.0** · **New: an optional server.** Accounts with passkeys, groups, vaults shared with a team, and an unlimited file history. The application file stays exactly the same — the service delivers it with two changes and otherwise only stores what the browser has already encrypted. It never sees a master password or a key.
 >
-> **New in 1.9.0:** every change keeps the previous state of an entry. Old passwords and deleted entries can be brought back — offline as well, because the history lives in the same encrypted file. This introduces file format v3; see [File format](#file-format) for what that means for older versions of the application.
+> The local file is unaffected and keeps its promise literally: its policy forbids *every* connection, and the file contains neither a URL nor a `fetch` call.
 >
-> **Six checks require manual work and are still open:** the auto-lock timeout, a visual check of the translations for line breaks, keyboard-only operation, functional testing in Firefox and Safari, fallback behaviour without the File System Access API and without `BarcodeDetector`, and testing against the reverse proxy of the target environment. The current state is tracked as a checklist in [docs/requirements.md](docs/requirements.md#9-abnahmekriterien).
+> **Still open, and only checkable by hand:** signing in with a real passkey in Chrome, Firefox and Safari; OIDC against Microsoft 365 and Google with real credentials; behaviour behind the reverse proxy of the target environment; the auto-lock timeout; keyboard-only operation; and the fallbacks without the File System Access API and without `BarcodeDetector`. The current state is a checklist in [docs/requirements.md](docs/requirements.md#9-abnahmekriterien).
 
 ---
 
@@ -32,18 +32,23 @@ On the first save the browser asks for a location. From then on the application 
 ## Deploying with Docker
 
 ```bash
-docker compose up -d --build     # → http://127.0.0.1:4080/
+docker compose up -d --build                     # → http://127.0.0.1:4080/
+docker compose --profile server up -d --build    # → http://127.0.0.1:4081/
 ```
+
+Without the profile nothing changes: one container, nginx, one file. The
+service is a second target in the same Dockerfile and only comes into being
+when asked for. See [The server variant](#the-server-variant).
 
 Or without Compose:
 
 ```bash
-docker build -t mmo-vault:1.9.0 .
+docker build -t mmo-vault:2.0.0 .
 docker run -d --name mmo-vault --restart unless-stopped \
   -p 127.0.0.1:4080:8080 \
   --read-only --tmpfs /tmp --cap-drop ALL \
   --security-opt no-new-privileges:true \
-  mmo-vault:1.9.0
+  mmo-vault:2.0.0
 ```
 
 Port and bind address can be set without editing compose.yaml:
@@ -73,7 +78,7 @@ docker compose up -d --build
 If you would rather not build on the server, transfer the finished image instead:
 
 ```bash
-docker save mmo-vault:1.9.0 | gzip | ssh server 'gunzip | docker load'
+docker save mmo-vault:2.0.0 | gzip | ssh server 'gunzip | docker load'
 ```
 
 **Starting after a reboot** comes from `restart: unless-stopped` in compose.yaml — but that only takes effect if the Docker service itself starts at boot:
@@ -118,9 +123,88 @@ The application detects this on load and shows a clear notice instead of a crypt
 
 ### What deployment does not change
 
-The server only ever sees the application file. Vault files stay exclusively with the user: they are decrypted in the browser and saved through the file dialog — never uploaded. The CSP with `connect-src 'none'` prevents the page from opening any connection back at all.
+In this variant the server only ever sees the application file. Vault files stay exclusively with the user: they are decrypted in the browser and saved through the file dialog — never uploaded. The CSP with `connect-src 'none'` prevents the page from opening any connection back at all.
+
+With the server variant the vault files do live on the server — as ciphertext. What does not change there either is where the decryption happens: in the browser, with a master password the service never receives.
 
 ---
+
+## The server variant
+
+Everything above works without any of this. The server exists for the case the
+single file cannot cover: **several people, one vault.**
+
+```bash
+python mmo_vault.py setup     # accounts, database, the first administrator
+python mmo_vault.py start     # the service
+```
+
+Or as a container, where the compose profile decides:
+
+```bash
+docker compose up -d --build                     # just the file, as before
+docker compose --profile server up -d --build    # with the service
+docker compose --profile server run --rm mmo-vault-server setup
+```
+
+### What it does
+
+- **Accounts with passkeys.** WebAuthn, phishing-resistant, no shared secret on
+  the server: it stores a public key and nothing else. Alternatively OIDC —
+  Microsoft 365, Google, or anything else with discovery, configurable per user
+  and per group.
+- **Groups and sharing.** A vault is shared with people or with groups, read or
+  read-write; the wider permission wins.
+- **Unlimited file history.** Every save is kept. Restoring writes a *new*
+  generation instead of rewinding, so the history stays gapless and the restore
+  itself can be undone. Nothing ever expires on its own — the size is shown and
+  a person decides what goes.
+- **Two layers against lost writes.** A lock keeps two people out of each
+  other's way; an ETag decides who wrote last. The lock is advisory, the ETag is
+  binding — so a lock that expired unnoticed cannot cause damage.
+
+### What it does not do
+
+It does not decrypt. The service stores blocks of ciphertext, checks that they
+are structurally a vault file, and hands them back. The master password is
+entered in the browser, the key is derived there, and neither ever leaves it.
+After clicking a vault in the list you enter one thing: the master password.
+
+### The one change to the file
+
+In server mode the delivered copy differs from the file on disk in exactly two
+places: `connect-src 'none'` becomes `connect-src 'self'`, and an inline script
+provides the adapter that knows how to talk to the service. What gets added is
+readable in plain text at `/api/injection`.
+
+That is what keeps the promise intact for the local file. Download it, open it
+offline, and it still cannot open a connection — the policy says so and the
+browser enforces it.
+
+> **Worth being clear about:** whoever controls the server can delete vault
+> files, roll them back, or inject arbitrary code into the delivered
+> application. They cannot read the vaults. Availability and integrity rest on
+> the server; confidentiality still rests on the master password alone. For the
+> highest bar, the local file remains the right answer.
+>
+> And: everyone who can write to a shared vault knows the same master password.
+> Revoking a share takes away access to the server, not the knowledge. After
+> revoking, change the master password.
+
+### Signing in the first time
+
+`setup` gives the administrator a password and nothing else — no TOTP, no QR
+code. That password can do exactly one thing: register a passkey. Everything
+else answers with 403 until it has happened, and afterwards the password is
+discarded rather than merely ignored.
+
+Lost the device? Backup codes come with the first passkey. Lost those too?
+`python mmo_vault.py enroll <account>` on the server opens a new window. There
+is no e-mail reset and no self-service form — whoever has the server has
+everything anyway, and that is an honest boundary rather than a hole.
+
+The administration lives at **`/admin`**; the root address serves the vault
+application.
 
 ## What's inside
 
@@ -224,22 +308,28 @@ Full specification: [docs/requirements.md](docs/requirements.md#5-dateiformat).
 
 ```
 mmo_vault/
+├── mmo_vault.py             CLI entry point: setup, start, enroll
 ├── mmo_vault/
-│   └── public_html/
-│       └── mmo_vault.html   The complete application (= served directory)
+│   ├── public_html/
+│   │   └── mmo_vault.html   The complete application (= served directory)
+│   ├── server/              The service: FastAPI, models, routers, templates
+│   └── migrations/          Alembic
 ├── docker/
 │   └── nginx.conf           Static server, index set to mmo_vault.html
 ├── docs/
 │   ├── requirements.md      Requirements, file format, threat model, acceptance
-│   ├── login_screen.png     Screenshot: unlocking
-│   └── main_screen.png      Screenshot: main view
-├── Dockerfile
+│   ├── plan_versioning.md   Design of the record versioning (2.0.0)
+│   └── plan_server.md       Design of the server variant (2.0.0)
+├── tests/                   pytest, for the server only
+├── Dockerfile               Two targets: static and server
 ├── compose.yaml
-├── README.md
+├── requirements.txt
 └── LICENSE
 ```
 
-No build, no package manager, no test runner. To change something, open the HTML file in an editor.
+**The application still has no build step and no dependencies.** To change
+something, open the HTML file in an editor. The server is a separate matter:
+Python, `pip install -r requirements-dev.txt`, `pytest`.
 
 ---
 

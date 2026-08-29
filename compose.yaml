@@ -1,22 +1,31 @@
-# MMO Vault — Auslieferung als statischer Container.
+# MMO Vault — zwei Betriebsarten, ein Compose.
 #
-#   docker compose up -d --build     → http://127.0.0.1:4080/
+#   docker compose up -d --build                    → statisch, http://127.0.0.1:4080/
+#   docker compose --profile server up -d --build   → Server, http://127.0.0.1:4081/
 #
-# Der Dienst ist als Backend hinter einem Reverse Proxy gedacht, der TLS
-# terminiert. Ohne HTTPS ist die Anwendung nur über localhost benutzbar:
-# crypto.subtle existiert außerhalb eines Secure Context nicht, die Oberfläche
-# weist darauf hin und sperrt sich selbst.
+# Der statische Betrieb ist die Anwendung selbst: eine HTML-Datei, ausgeliefert
+# von nginx. Kein Python, keine Datenbank, kein Zustand.
+#
+# Der Server kommt dazu, wenn Konten, Passkeys, geteilte Vaults und eine
+# Dateihistorie gebraucht werden. Er liefert dieselbe HTML-Datei aus, mit den
+# zwei Änderungen aus injection.py.
+#
+# Beide sind als Backend hinter einem Reverse Proxy gedacht, der TLS terminiert.
+# Ohne HTTPS ist die Anwendung nur über localhost benutzbar: crypto.subtle
+# existiert außerhalb eines Secure Context nicht, und Passkeys erst recht nicht.
 #
 # Abweichender Port oder Bind-Adresse ohne Änderung dieser Datei:
 #   VAULT_PORT=4080 VAULT_BIND=127.0.0.1 docker compose up -d
 # oder dauerhaft in einer .env-Datei daneben.
 
 services:
+  # ---------------------------------------------------------------- statisch
   mmo-vault:
     build:
       context: .
       dockerfile: Dockerfile
-    image: mmo-vault:1.9.0
+      target: static
+    image: mmo-vault:2.0.0
     container_name: mmo-vault
     # Startet nach einem Reboot automatisch wieder — vorausgesetzt, der
     # Docker-Dienst selbst ist aktiviert (systemctl enable docker).
@@ -51,6 +60,51 @@ services:
     # Statischer Dateiserver für ein Dokument — mehr braucht es nicht.
     mem_limit: 64m
     pids_limit: 64
+
+  # ------------------------------------------------------------------ Server
+  mmo-vault-server:
+    # Ohne "--profile server" existiert dieser Dienst nicht. Der statische
+    # Betrieb bleibt damit genau das, was er vorher war.
+    profiles: [server]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: server
+    image: mmo-vault-server:2.0.0
+    container_name: mmo-vault-server
+    restart: unless-stopped
+
+    # Erste Inbetriebnahme — einmalig, vor dem ersten Start:
+    #   docker compose --profile server run --rm mmo-vault-server setup
+    # Danach steht in var/config.toml, was der Dienst braucht.
+
+    ports:
+      - "${VAULT_BIND:-127.0.0.1}:${VAULT_SERVER_PORT:-4081}:8000"
+
+    # networks:
+    #   - proxy
+
+    volumes:
+      # Der einzige Ort, an dem geschrieben wird: Datenbank, Konfiguration und
+      # die Vault-Dateien samt Generationen.
+      - vault-data:/app/var
+
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    # Deutlich mehr als beim statischen Betrieb: Python, SQLAlchemy und die
+    # Argon2-Prüfung brauchen Platz. Argon2 ist absichtlich speicherhungrig —
+    # ein zu knappes Limit lässt die Anmeldung scheitern, nicht bloß bremsen.
+    mem_limit: 512m
+    pids_limit: 256
+
+volumes:
+  vault-data:
 
 # networks:
 #   proxy:

@@ -1,13 +1,24 @@
-# Whitelist statt Blacklist: erst alles ausschließen, dann gezielt einbeziehen.
-# So landet auch künftig nichts versehentlich im Build-Kontext, was dort nicht
-# hingehört — insbesondere keine Vault-Dateien, keine .git-Historie und keine
-# privaten Projektnotizen.
+# Whitelist rather than blacklist: exclude everything first, then include what
+# belongs in the build context. That way nothing new slips in later either -
+# no vault files, no git history, no private project notes.
 *
 
 !mmo_vault
 !docker
+!mmo_vault.py
+!alembic.ini
+!requirements.txt
 
-# Falls beim Entwickeln eine echte Vault-Datei im Auslieferverzeichnis landet,
-# darf sie unter keinen Umständen mit ins Image.
+# Application data of a local installation. The container gets its own volume;
+# a database or configuration from the developer machine has no business in an
+# image - config.toml holds the session secret.
+mmo_vault/../var
+var
+
+# Should a real vault file ever end up in the served directory while
+# developing, it must not make it into the image under any circumstances.
 mmo_vault/**/*.vault
 mmo_vault/**/mmo-vault*.json
+
+# Nothing here is needed at runtime.
+mmo_vault/**/__pycache__

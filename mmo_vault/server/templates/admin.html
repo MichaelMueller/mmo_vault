@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block title %}Verwaltung · MMO Vault{% endblock %}
+
+{% block content %}
+<div class="topbar">
+  <h1>MMO Vault — Verwaltung</h1>
+  <span class="muted">{{ user.name }} · <a href="#" id="logout">abmelden</a></span>
+</div>
+
+<div id="message" class="msg"></div>
+
+<h2>Benutzer</h2>
+<div class="card">
+  <table id="users"><thead><tr>
+    <th>Konto</th><th>Gruppen</th><th>Passkeys</th><th>Status</th><th></th>
+  </tr></thead><tbody></tbody></table>
+</div>
+
+<div class="card">
+  <div class="row">
+    <input id="newUserName" placeholder="Kontoname" style="flex:1 1 160px;">
+    <input id="newUserMail" placeholder="E-Mail" style="flex:1 1 160px;">
+    <input id="newUserGroups" placeholder="Gruppen, kommagetrennt" style="flex:1 1 160px;">
+    <label class="row" style="margin:0; gap:6px;">
+      <input type="checkbox" id="newUserAdmin" style="width:auto;"> Administrator
+    </label>
+    <button class="primary" id="btnAddUser">Anlegen</button>
+  </div>
+  <p class="muted" style="margin:10px 0 0;">
+    Ein neues Konto bekommt ein Einmalpasswort. Damit lässt sich genau eines
+    tun: einen Passkey anlegen.
+  </p>
+</div>
+
+<h2>Gruppen</h2>
+<div class="card">
+  <table id="groups"><thead><tr>
+    <th>Gruppe</th><th>Beschreibung</th><th>Mitglieder</th><th>Provider</th><th></th>
+  </tr></thead><tbody></tbody></table>
+  <div class="row" style="margin-top:12px;">
+    <input id="newGroupName" placeholder="Name" style="flex:1 1 140px;">
+    <input id="newGroupDesc" placeholder="Beschreibung" style="flex:2 1 200px;">
+    <button class="primary" id="btnAddGroup">Anlegen</button>
+  </div>
+</div>
+
+<h2>Identitätsanbieter</h2>
+<div class="card">
+  <table id="providers"><thead><tr>
+    <th>Name</th><th>Issuer</th><th>Client-ID</th><th>Aktiv</th><th></th>
+  </tr></thead><tbody></tbody></table>
+  <div class="row" style="margin-top:12px;">
+    <input id="pName" placeholder="Name, z. B. google" style="flex:1 1 120px;">
+    <input id="pIssuer" placeholder="https://accounts.google.com" style="flex:2 1 220px;">
+    <input id="pClientId" placeholder="Client-ID" style="flex:1 1 140px;">
+    <input id="pSecret" placeholder="Client-Secret" type="password" style="flex:1 1 140px;">
+    <button class="primary" id="btnAddProvider">Anlegen</button>
+  </div>
+  <p class="muted" style="margin:10px 0 0;">
+    Das Secret wird nur geschrieben, nie wieder ausgegeben. Die Umleitung
+    lautet <code>{{ origin }}/auth/oidc/&lt;name&gt;/callback</code>.
+  </p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let providers = [];
+
+function cell(row, text){
+  const td = document.createElement('td');
+  td.textContent = text;
+  row.appendChild(td);
+  return td;
+}
+
+function actionCell(row, actions){
+  const td = document.createElement('td');
+  actions.forEach(([label, handler, danger]) => {
+    const button = document.createElement('button');
+    button.textContent = label;
+    if(danger) button.className = 'danger';
+    button.style.marginRight = '6px';
+    button.onclick = handler;
+    td.appendChild(button);
+  });
+  row.appendChild(td);
+}
+
+async function guard(action){
+  try{ await action(); await loadAll(); }
+  catch(err){ show('message', err.message || String(err)); }
+}
+
+async function loadAll(){
+  const [users, groups, providerList] = await Promise.all([
+    api('/api/users'), api('/api/groups'), api('/api/providers')
+  ]);
+  providers = providerList;
+
+  const userBody = document.querySelector('#users tbody');
+  userBody.innerHTML = '';
+  users.forEach(user => {
+    const row = document.createElement('tr');
+    cell(row, user.name + (user.is_admin ? '  (Admin)' : '')).title = user.email || '';
+    cell(row, user.groups.join(', ') || '—');
+    cell(row, user.credentials.length
+      ? user.credentials.map(c => c.label || 'ohne Namen').join(', ')
+      : '—');
+    cell(row, !user.is_active ? 'gesperrt'
+            : user.must_enroll_passkey ? 'wartet auf Passkey'
+            : 'aktiv');
+    actionCell(row, [
+      ['Neu einladen', () => guard(async () => {
+        const result = await api('/api/users/' + user.id + '/enroll', { method:'POST' });
+        // Shown once, and only here: it is not stored in plain text anywhere.
+        show('message', 'Einmalpasswort für ' + user.name + ': ' + result.one_time_password, 'ok');
+      })],
+      [user.is_active ? 'Sperren' : 'Freigeben', () => guard(() =>
+        api('/api/users/' + user.id, { method:'PATCH',
+            body: JSON.stringify({ is_active: !user.is_active }) }))],
+      ['Löschen', () => { if(confirm('Konto ' + user.name + ' löschen?'))
+        guard(() => api('/api/users/' + user.id, { method:'DELETE' })); }, true]
+    ]);
+    userBody.appendChild(row);
+  });
+
+  const groupBody = document.querySelector('#groups tbody');
+  groupBody.innerHTML = '';
+  groups.forEach(group => {
+    const row = document.createElement('tr');
+    cell(row, group.name);
+    cell(row, group.description || '—');
+    cell(row, String(group.members));
+    cell(row, (providers.find(p => p.id === group.provider_id) || {}).name || '—');
+    actionCell(row, [['Löschen', () => { if(confirm('Gruppe ' + group.name + ' löschen?'))
+      guard(() => api('/api/groups/' + group.id, { method:'DELETE' })); }, true]]);
+    groupBody.appendChild(row);
+  });
+
+  const providerBody = document.querySelector('#providers tbody');
+  providerBody.innerHTML = '';
+  providers.forEach(provider => {
+    const row = document.createElement('tr');
+    cell(row, provider.name);
+    cell(row, provider.issuer);
+    cell(row, provider.client_id);
+    cell(row, provider.enabled ? 'ja' : 'nein');
+    actionCell(row, [
+      [provider.enabled ? 'Abschalten' : 'Einschalten', () => guard(() =>
+        api('/api/providers/' + provider.id, { method:'PATCH',
+            body: JSON.stringify({ enabled: !provider.enabled }) }))],
+      ['Löschen', () => guard(() =>
+        api('/api/providers/' + provider.id, { method:'DELETE' })), true]
+    ]);
+    providerBody.appendChild(row);
+  });
+}
+
+document.getElementById('btnAddUser').onclick = () => guard(async () => {
+  const groups = document.getElementById('newUserGroups').value
+    .split(',').map(s => s.trim()).filter(Boolean);
+  const created = await api('/api/users', { method:'POST', body: JSON.stringify({
+    name: document.getElementById('newUserName').value.trim(),
+    email: document.getElementById('newUserMail').value.trim(),
+    is_admin: document.getElementById('newUserAdmin').checked,
+    groups
+  })});
+  show('message', 'Einmalpasswort für ' + created.name + ': ' + created.one_time_password
+       + '  (nur jetzt sichtbar)', 'ok');
+  ['newUserName','newUserMail','newUserGroups'].forEach(id =>
+    document.getElementById(id).value = '');
+  document.getElementById('newUserAdmin').checked = false;
+});
+
+document.getElementById('btnAddGroup').onclick = () => guard(async () => {
+  await api('/api/groups', { method:'POST', body: JSON.stringify({
+    name: document.getElementById('newGroupName').value.trim(),
+    description: document.getElementById('newGroupDesc').value.trim()
+  })});
+  document.getElementById('newGroupName').value = '';
+  document.getElementById('newGroupDesc').value = '';
+});
+
+document.getElementById('btnAddProvider').onclick = () => guard(async () => {
+  await api('/api/providers', { method:'POST', body: JSON.stringify({
+    name: document.getElementById('pName').value.trim(),
+    issuer: document.getElementById('pIssuer').value.trim(),
+    client_id: document.getElementById('pClientId').value.trim(),
+    client_secret: document.getElementById('pSecret').value
+  })});
+  ['pName','pIssuer','pClientId','pSecret'].forEach(id =>
+    document.getElementById(id).value = '');
+});
+
+document.getElementById('logout').onclick = async (event) => {
+  event.preventDefault();
+  await api('/auth/logout', { method:'POST' });
+  location.href = '/login';
+};
+
+loadAll().catch(err => show('message', err.message || String(err)));
+</script>
+{% endblock %}

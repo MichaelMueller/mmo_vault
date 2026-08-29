@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Anmelden · MMO Vault{% endblock %}
+{% block wrapclass %}narrow{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h1>MMO Vault</h1>
+  <p class="muted">Anmeldung am Server. Der Vault selbst wird danach mit dem
+     Master-Passwort entsperrt — das bleibt im Browser.</p>
+
+  <div id="message" class="msg"></div>
+
+  <button class="primary block" id="btnPasskey">Mit Passkey anmelden</button>
+
+  {% if providers %}
+  <div class="divider">oder</div>
+  {% for provider in providers %}
+  <a href="/auth/oidc/{{ provider.name }}"><button class="block">Anmelden mit {{ provider.name }}</button></a>
+  {% endfor %}
+  {% endif %}
+
+  <div class="divider">Ersteinrichtung oder Wiederherstellung</div>
+  <form id="passwordForm">
+    <label for="name">Konto</label>
+    <input id="name" name="name" autocomplete="username" required>
+    <label for="password">Einmalpasswort oder Ersatzcode</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button class="block" type="submit">Weiter</button>
+  </form>
+  <p class="muted" style="margin-top:14px;">
+    Ein Einmalpasswort gilt nur, bis ein Passkey angelegt ist. Danach ist es
+    verbraucht.
+  </p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('btnPasskey').onclick = async () => {
+  try{
+    // Without a name: the passkey is discoverable, the browser picks it, and
+    // the service does not have to reveal which accounts exist.
+    const started = await api('/auth/passkey/options', {
+      method:'POST', body: JSON.stringify({ name: null })
+    });
+    const options = started.options;
+    options.challenge = b64urlToBytes(options.challenge);
+    (options.allowCredentials || []).forEach(c => { c.id = b64urlToBytes(c.id); });
+
+    const assertion = await navigator.credentials.get({ publicKey: options });
+    await api('/auth/passkey/verify', { method:'POST', body: JSON.stringify({
+      challenge_id: started.challenge_id,
+      credential: {
+        id: assertion.id,
+        rawId: bytesToB64url(assertion.rawId),
+        type: assertion.type,
+        response: {
+          clientDataJSON: bytesToB64url(assertion.response.clientDataJSON),
+          authenticatorData: bytesToB64url(assertion.response.authenticatorData),
+          signature: bytesToB64url(assertion.response.signature),
+          userHandle: assertion.response.userHandle ? bytesToB64url(assertion.response.userHandle) : null
+        }
+      }
+    })});
+    location.href = '/';
+  }catch(err){
+    // NotAllowedError means the user cancelled or nothing matched - not an
+    // error worth shouting about.
+    if(err.name === 'NotAllowedError') return;
+    show('message', err.message || String(err));
+  }
+};
+
+document.getElementById('passwordForm').onsubmit = async (event) => {
+  event.preventDefault();
+  const name = document.getElementById('name').value.trim();
+  const password = document.getElementById('password').value;
+  try{
+    const result = await api('/auth/login', {
+      method:'POST', body: JSON.stringify({ name, password })
+    });
+    location.href = result.enrollment_required ? '/enroll' : '/';
+  }catch(err){
+    // A backup code is entered in the same field: whoever has one has lost
+    // their device, and a second form would only be in the way.
+    try{
+      await api('/auth/backup-code', {
+        method:'POST', body: JSON.stringify({ name, code: password })
+      });
+      location.href = '/enroll';
+    }catch(second){
+      show('message', 'Anmeldung fehlgeschlagen.');
+    }
+  }
+};
+</script>
+{% endblock %}

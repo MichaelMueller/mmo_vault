@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="de"><head><meta charset="UTF-8">
+<!-- Same rule as in the vault application: no external resources. The pages of
+     the service are plain HTML with a little inline JavaScript, so that the
+     Content Security Policy can stay this narrow. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; form-action 'self'; base-uri 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}MMO Vault{% endblock %}</title>
+<style>
+:root{
+  --surface:#121614; --surface-container:#1c2220; --surface-high:#242b28;
+  --on-surface:#e4e8e4; --on-surface-variant:#a6b3ad;
+  --outline:#3d4a45; --outline-variant:#2a332f;
+  --primary:#e0be7d; --on-primary:#3b2f10; --error:#ef9a9a; --ok:#8fd3a4;
+  --radius:14px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0; padding:24px 16px; background:var(--surface); color:var(--on-surface);
+  font-family:var(--font); font-size:15px; line-height:1.5;
+}
+h1{font-size:20px; letter-spacing:.08em; text-transform:uppercase; margin:0 0 4px;}
+h2{font-size:15px; margin:28px 0 10px; color:var(--on-surface-variant);
+   text-transform:uppercase; letter-spacing:.06em;}
+a{color:var(--primary);}
+.wrap{max-width:960px; margin:0 auto;}
+.narrow{max-width:420px;}
+.card{
+  background:var(--surface-container); border:1px solid var(--outline-variant);
+  border-radius:var(--radius); padding:20px; margin-bottom:16px;
+}
+.muted{color:var(--on-surface-variant); font-size:13px;}
+label{display:block; font-size:12px; color:var(--on-surface-variant); margin:10px 0 4px;}
+input, select{
+  width:100%; padding:10px 12px; background:var(--surface-high);
+  color:var(--on-surface); border:1px solid var(--outline); border-radius:10px;
+  font-family:inherit; font-size:16px; /* 16px keeps iOS from zooming in */
+}
+button{
+  padding:10px 16px; border-radius:10px; border:1px solid var(--outline);
+  background:var(--surface-high); color:var(--on-surface);
+  font-family:inherit; font-size:14px; cursor:pointer;
+}
+button.primary{background:var(--primary); color:var(--on-primary); border-color:transparent; font-weight:600;}
+button.danger{color:var(--error);}
+button:disabled{opacity:.5; cursor:default;}
+.row{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+.block{width:100%; margin-top:12px;}
+table{width:100%; border-collapse:collapse; font-size:14px;}
+th{text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+   color:var(--on-surface-variant); padding:6px 8px; border-bottom:1px solid var(--outline-variant);}
+td{padding:8px; border-bottom:1px solid var(--outline-variant); vertical-align:top;}
+tr:last-child td{border-bottom:none;}
+code{font-family:var(--mono); font-size:13px; background:var(--surface-high);
+     padding:2px 6px; border-radius:6px; overflow-wrap:anywhere;}
+.msg{padding:10px 12px; border-radius:10px; font-size:13.5px; margin:12px 0; display:none;}
+.msg.show{display:block;}
+.msg.error{background:rgba(239,154,154,.12); color:var(--error);}
+.msg.ok{background:rgba(143,211,164,.12); color:var(--ok);}
+.divider{display:flex; align-items:center; gap:10px; margin:18px 0 12px;
+         font-size:11.5px; color:var(--on-surface-variant);}
+.divider::before, .divider::after{content:''; flex:1; height:1px; background:var(--outline-variant);}
+.topbar{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:20px;}
+</style>
+</head>
+<body>
+<div class="wrap {% block wrapclass %}{% endblock %}">
+{% block content %}{% endblock %}
+</div>
+<script>
+// Every state-changing call carries this header. Together with SameSite=Lax it
+// is what stands between the service and a cross-site request.
+async function api(path, options){
+  const response = await fetch(path, Object.assign({
+    headers: Object.assign({'Content-Type':'application/json','X-Vault-Request':'1'},
+                           (options||{}).headers||{})
+  }, options||{}));
+  let body = null;
+  try{ body = await response.json(); }catch(err){ /* 204 and friends */ }
+  if(!response.ok){
+    const err = new Error((body && body.detail) || ('HTTP ' + response.status));
+    err.status = response.status;
+    throw err;
+  }
+  return body;
+}
+
+function show(id, text, kind){
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'msg show ' + (kind || 'error');
+}
+
+// WebAuthn speaks base64url; JSON does not.
+function b64urlToBytes(value){
+  const padded = value.replace(/-/g,'+').replace(/_/g,'/');
+  const raw = atob(padded + '='.repeat((4 - padded.length % 4) % 4));
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+function bytesToB64url(buffer){
+  const bytes = new Uint8Array(buffer);
+  let raw = '';
+  for(const byte of bytes) raw += String.fromCharCode(byte);
+  return btoa(raw).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+</script>
+{% block scripts %}{% endblock %}
+</body></html>

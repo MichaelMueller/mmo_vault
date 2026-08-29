@@ -66,6 +66,31 @@ def _record_failure(db: DbSession, user: User) -> None:
     db.commit()
 
 
+def _require_registration_allowed(session: Session, user: User, config: Config) -> None:
+    """Two different justifications for registering a passkey, never none.
+
+    During mandatory enrollment the restricted session and the expiring window
+    are the justification. Afterwards, adding a device to a working account is
+    the single most valuable thing a session thief could do - so it demands a
+    sign-in that is both strong and recent. A password session never qualifies,
+    an aged passkey session no longer does; signing in again is the re-auth,
+    since verification rotates the session anyway.
+    """
+    if user.must_enroll_passkey:
+        if deps.enrollment_window_closed(user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="the registration window has closed - reopen it with `mmo_vault.py enroll`",
+            )
+        return
+    if not deps.fresh_strong_auth(session, config):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            # Machine-readable on purpose: the page reacts to this exact string.
+            detail="fresh sign-in required",
+        )
+
+
 def _generic_denial() -> HTTPException:
     """One message for every reason.
 
@@ -159,22 +184,21 @@ def passkey_verify(
         raise _generic_denial()
 
     deps.note_success(user)
-    session = sessions.create(db, config, user, enrollment_only=False, request=request)
+    session = sessions.create(
+        db, config, user, enrollment_only=False, strong_auth=True, request=request
+    )
     sessions.attach_cookie(response, config, session)
     return {"user": user.name, "is_admin": user.is_admin}
 
 
 @router.post("/passkey/register/options", dependencies=[Depends(deps.require_csrf_header)])
 def register_options(
+    session: Session = Depends(deps.require_session),
     user: User = Depends(deps.require_user),
     db: DbSession = Depends(deps.get_db),
     config: Config = Depends(deps.get_config),
 ) -> dict:
-    if deps.enrollment_window_closed(user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="the registration window has closed - reopen it with `mmo_vault.py enroll`",
-        )
+    _require_registration_allowed(session, user, config)
     challenge_id, options = passkeys.registration_options(db, config, user)
     return {"challenge_id": challenge_id, "options": options}
 
@@ -189,10 +213,7 @@ def register_verify(
     db: DbSession = Depends(deps.get_db),
     config: Config = Depends(deps.get_config),
 ) -> dict:
-    if deps.enrollment_window_closed(user):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="the registration window has closed"
-        )
+    _require_registration_allowed(session, user, config)
     try:
         passkeys.verify_registration(
             db, config, user, payload.challenge_id, payload.credential, payload.label
@@ -217,7 +238,9 @@ def register_verify(
         # id - issued for a password - is revoked and a fresh one takes over.
         # Anyone who captured the enrollment cookie holds a dead value now.
         sessions.revoke(db, session)
-        fresh = sessions.create(db, config, user, enrollment_only=False, request=request)
+        fresh = sessions.create(
+            db, config, user, enrollment_only=False, strong_auth=True, request=request
+        )
         sessions.attach_cookie(response, config, fresh)
 
     return {

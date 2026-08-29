@@ -209,3 +209,94 @@ def test_enroll_does_not_reactivate_a_disabled_account(config, capsys):
     db.init(config)
     with db.session_scope() as session:
         assert session.query(User).one().is_active is False
+
+
+# ----------------------------------------------- adding a device needs proof
+
+
+def test_an_aged_session_may_not_add_a_passkey(config):
+    """The finding this closes: any full session could register a further
+    passkey. A session thief's most valuable move was to settle in for good."""
+    with TestClient(create_app(config), base_url=ORIGIN) as client:
+        client.post("/auth/login", json={"name": "admin", "password": PASSWORD}, headers=HEADERS)
+        started = client.post("/auth/passkey/register/options", headers=HEADERS).json()
+        client.post("/auth/passkey/register/verify", json={
+            "challenge_id": started["challenge_id"],
+            "credential": SoftAuthenticator().create(started["options"], ORIGIN),
+        }, headers=HEADERS)
+
+        # Fresh after the bootstrap rotation: the second device works - that is
+        # the flow the interface explicitly encourages.
+        assert client.post("/auth/passkey/register/options", headers=HEADERS).status_code == 200
+
+        # Age the session past the window: now it is just a cookie, not proof.
+        db.init(config)
+        with db.session_scope() as session:
+            record = session.query(Session).one()
+            record.created_at = utcnow() - dt.timedelta(
+                minutes=config.auth.reauth_minutes + 1
+            )
+
+        refused = client.post("/auth/passkey/register/options", headers=HEADERS)
+        assert refused.status_code == 403
+        assert "fresh sign-in" in refused.json()["detail"]
+        # Everything else keeps working - only the registration is gated.
+        assert client.get("/api/me").status_code == 200
+
+
+def test_a_fresh_passkey_sign_in_reopens_registration(config):
+    """Signing in again IS the re-auth: verification rotates the session."""
+    device = SoftAuthenticator()
+    with TestClient(create_app(config), base_url=ORIGIN) as client:
+        client.post("/auth/login", json={"name": "admin", "password": PASSWORD}, headers=HEADERS)
+        started = client.post("/auth/passkey/register/options", headers=HEADERS).json()
+        client.post("/auth/passkey/register/verify", json={
+            "challenge_id": started["challenge_id"],
+            "credential": device.create(started["options"], ORIGIN),
+        }, headers=HEADERS)
+
+        db.init(config)
+        with db.session_scope() as session:
+            record = session.query(Session).one()
+            record.created_at = utcnow() - dt.timedelta(minutes=60)
+        assert client.post("/auth/passkey/register/options", headers=HEADERS).status_code == 403
+
+        # Sign in afresh with the existing passkey - the new session is strong
+        # and recent by construction.
+        opts = client.post("/auth/passkey/options", json={"name": "admin"}, headers=HEADERS).json()
+        client.post("/auth/passkey/verify", json={
+            "challenge_id": opts["challenge_id"],
+            "credential": device.get(opts["options"], ORIGIN),
+        }, headers=HEADERS)
+        assert client.post("/auth/passkey/register/options", headers=HEADERS).status_code == 200
+
+
+def test_a_password_session_may_never_add_a_passkey(config, monkeypatch):
+    """Strength, not just freshness: the loopback password path yields a full
+    session, but a password must not be enough to enroll a device.
+
+    The loopback detection itself is tested in test_auth; here it is stubbed
+    out, because the test client does not connect from 127.0.0.1 and what is
+    under test is the strength rule, not the address check.
+    """
+    from mmo_vault.server import deps, security
+
+    monkeypatch.setattr(deps, "is_local_request", lambda request: True)
+    config.auth.allow_local_password_login = True
+    db.init(config)
+    with db.session_scope() as session:
+        admin_user = session.query(User).one()
+        admin_user.must_enroll_passkey = False
+        admin_user.enroll_expires_at = None
+        # Keep a password on the account, as the loopback exception assumes.
+        admin_user.password_hash = security.hash_password(PASSWORD)
+
+    with TestClient(create_app(config), base_url=ORIGIN) as client:
+        signed_in = client.post("/auth/login", json={"name": "admin", "password": PASSWORD},
+                                headers=HEADERS)
+        assert signed_in.status_code == 200
+        assert signed_in.json()["enrollment_required"] is False
+        # Full session, brand new - and still refused: it is only a password.
+        refused = client.post("/auth/passkey/register/options", headers=HEADERS)
+        assert refused.status_code == 403
+        assert "fresh sign-in" in refused.json()["detail"]

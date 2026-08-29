@@ -55,6 +55,10 @@ class AuthConfig:
     enrollment_hours: int = 72
     session_hours: int = 12
     session_idle_minutes: int = 30
+    # How recently a session must have been opened by passkey or OIDC before it
+    # may register a FURTHER passkey. Short on purpose: signing in again is
+    # cheap, and this is the line between a stolen cookie and a stolen device.
+    reauth_minutes: int = 10
 
 
 @dataclass

@@ -28,6 +28,7 @@ def create(
     user: User,
     *,
     enrollment_only: bool,
+    strong_auth: bool = False,
     request: Request | None = None,
 ) -> Session:
     session = Session(
@@ -35,6 +36,7 @@ def create(
         user_id=user.id,
         expires_at=utcnow() + dt.timedelta(hours=config.auth.session_hours),
         enrollment_only=enrollment_only,
+        strong_auth=strong_auth,
         ip=(request.client.host if request and request.client else ""),
         user_agent=(request.headers.get("user-agent", "")[:255] if request else ""),
     )

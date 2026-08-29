@@ -99,6 +99,20 @@ def require_admin(user: User = Depends(require_full_user)) -> User:
     return user
 
 
+def fresh_strong_auth(session: Session, config: Config) -> bool:
+    """Whether this session may vouch for its owner right now.
+
+    Strong means passkey or OIDC - never a password. Fresh means the sign-in
+    just happened: a session lives for hours, but "this is really me, add a
+    new device to my account" is a claim that goes stale in minutes. A stolen
+    cookie fails on freshness, a stolen password fails on strength.
+    """
+    age = utcnow() - session.created_at
+    return bool(session.strong_auth) and age <= dt.timedelta(
+        minutes=config.auth.reauth_minutes
+    )
+
+
 # ------------------------------------------------------------ local requests
 
 

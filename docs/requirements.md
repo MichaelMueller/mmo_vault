@@ -144,7 +144,7 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 | SEC-44 | Das Client-Secret eines Providers DARF nach dem Anlegen nicht mehr ausgegeben werden, auch nicht an Administratoren. |
 | SEC-45 | Der letzte aktive Administrator DARF weder herabgestuft noch gesperrt noch gelöscht werden. |
 
-**Bekannte Grenze:** Eine vollwertige Sitzung darf weitere Passkeys registrieren, ohne den vorhandenen erneut zu bestätigen. Wer eine laufende Sitzung übernimmt (Gerätediebstahl im entsperrten Zustand), kann sich damit einen eigenen, dauerhaften Zugang anlegen. Eine erneute Passkey-Bestätigung unmittelbar vor der Registrierung würde das schließen und ist für eine spätere Version vorgesehen; bis dahin gilt: Passkey-Liste im eigenen Konto gelegentlich ansehen, Unbekanntes löschen — jede Registrierung steht im Audit-Log.
+| SEC-46 | Die Registrierung eines **weiteren** Passkeys (außerhalb der Registrierungspflicht) MUSS eine Sitzung verlangen, die **stark und frisch** ist: entstanden durch Passkey oder OIDC — nie durch ein Passwort — und jünger als das konfigurierte Fenster (Vorgabe 10 Minuten). Ein gestohlenes Sitzungscookie scheitert an der Frische, ein gestohlenes Passwort an der Stärke. Die erneute Anmeldung ist die Re-Authentifizierung; einen eigenen Bestätigungsendpunkt gibt es bewusst nicht, weil die Passkey-Anmeldung die Sitzung ohnehin neu ausstellt. |
 
 ### 3.5 Bedrohungsmodell
 
@@ -625,6 +625,7 @@ Abgehakte Punkte sind nachweisbar geprüft — die Krypto-, Datenintegritäts-, 
 - [x] Generationen bei jedem Schreibvorgang; Wiederherstellen erzeugt eine neue; Nummern werden nicht wiederverwendet
 - [x] Löschen einzeln, unterhalb einer Nummer und vollständig; aktuelle Datei bleibt
 - [x] Injektion: genau zwei Änderungen, Datei auf dem Datenträger unverändert, Adapter vor dem Anwendungsskript, `/api/injection` zeigt den Block
+- [x] Weiterer Passkey nur mit starker, frischer Sitzung: gealterte Passkey-Sitzung und Passwort-Loopback-Sitzung werden abgewiesen, die frisch rotierte Sitzung nach der Erstregistrierung nicht
 - [x] Container: beide Ziele bauen, Server läuft unprivilegiert mit read-only Wurzeldateisystem, `config.toml` mit 0600
 - [ ] Anmeldung mit einem echten Passkey in Chrome, Firefox und Safari (die Testsuite nutzt einen selbst gebauten Authenticator)
 - [ ] OIDC-Anmeldung gegen Microsoft 365 und Google mit echten Zugangsdaten

@@ -75,6 +75,15 @@ document.getElementById('btnRegister').onclick = async () => {
     }
   }catch(err){
     if(err.name === 'NotAllowedError'){ button.disabled = false; return; }
+    if(err.status === 403 && /fresh sign-in/.test(err.message || '')){
+      // Adding a device to a working account needs a sign-in that just
+      // happened - a long-lived session is not proof enough. Signing in again
+      // IS the re-authentication, so that is where this leads.
+      show('message', 'Bitte frisch anmelden — das Hinzufügen eines Geräts '
+        + 'verlangt eine gerade eben erfolgte Anmeldung. Danach hierher zurückkehren.');
+      setTimeout(function(){ location.href = '/login'; }, 2500);
+      return;
+    }
     show('message', err.message || String(err));
     button.disabled = false;
   }

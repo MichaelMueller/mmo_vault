@@ -114,7 +114,11 @@ async def callback(
     _audit(db, "oidc_login", user.name, f"provider={provider.name}")
     # The provider vouches for the second factor; the service does not ask for
     # another one.
-    session = sessions.create(db, config, user, enrollment_only=False, request=request)
+    # Strong: whoever signs in here controls the account at the provider, and a
+    # session thief does not.
+    session = sessions.create(
+        db, config, user, enrollment_only=False, strong_auth=True, request=request
+    )
     response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     sessions.attach_cookie(response, config, session)
     return response

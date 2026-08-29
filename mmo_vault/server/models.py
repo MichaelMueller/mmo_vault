@@ -166,6 +166,10 @@ class Session(Base):
     # A session created with a password while must_enroll_passkey is set may do
     # nothing but register a passkey.
     enrollment_only: Mapped[bool] = mapped_column(Boolean, default=False)
+    # How the session came to be. True for passkey and OIDC, False for a mere
+    # password. Adding a further passkey to a working account requires a strong
+    # AND recent session - a stolen cookie must not be enough to settle in.
+    strong_auth: Mapped[bool] = mapped_column(Boolean, default=False)
     ip: Mapped[str] = mapped_column(String(64), default="")
     user_agent: Mapped[str] = mapped_column(String(255), default="")
 

@@ -17,6 +17,7 @@ from .config import VAR_DIR
 
 VAULTS_DIR = VAR_DIR / "vaults"
 CURRENT_NAME = "current.ndjson"
+HISTORY_NAME = "history"
 
 # The formats the application writes. A file that claims something else is
 # rejected rather than stored and handed back later as garbage.
@@ -114,6 +115,54 @@ def write(vault_id: str, text: str) -> tuple[str, int]:
         raise
 
     return compute_etag(text), len(data)
+
+
+# ------------------------------------------------------------------ history
+
+
+def history_dir(vault_id: str) -> Path:
+    return vault_dir(vault_id) / HISTORY_NAME
+
+
+def generation_path(vault_id: str, seq: int) -> Path:
+    # The sequence number is padded so a directory listing sorts the way the
+    # generations happened.
+    return history_dir(vault_id) / f"{seq:06d}.ndjson"
+
+
+def write_generation(vault_id: str, seq: int, text: str) -> int:
+    """Keeps a copy beside the current file.
+
+    Written with the same care as the current file: a generation that only
+    exists half way would be worse than none at all, because it looks like a
+    valid one to restore from.
+    """
+    directory = history_dir(vault_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    data = text.encode("utf-8")
+
+    handle, temp_name = tempfile.mkstemp(dir=directory, prefix=".write-", suffix=".tmp")
+    try:
+        with os.fdopen(handle, "wb") as file:
+            file.write(data)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temp_name, generation_path(vault_id, seq))
+    except BaseException:
+        Path(temp_name).unlink(missing_ok=True)
+        raise
+    return len(data)
+
+
+def read_generation(vault_id: str, seq: int) -> str | None:
+    path = generation_path(vault_id, seq)
+    if not path.is_file():
+        return None
+    return path.read_text(encoding="utf-8")
+
+
+def delete_generation(vault_id: str, seq: int) -> None:
+    generation_path(vault_id, seq).unlink(missing_ok=True)
 
 
 def delete(vault_id: str) -> None:

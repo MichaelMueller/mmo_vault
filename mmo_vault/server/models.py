@@ -191,6 +191,10 @@ class Vault(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
     etag: Mapped[str] = mapped_column(String(64), default="")
+    # Counts up only. Deriving the next number from max(seq) would hand a
+    # number out again after a deletion, and an audit entry saying "restored
+    # from #1" would then point at a different state than it did.
+    next_generation: Mapped[int] = mapped_column(Integer, default=1)
 
 
 class VaultAccess(Base):

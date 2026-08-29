@@ -22,7 +22,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DbSession
 
-from .. import deps, storage, vaults
+from .. import deps, history, storage, vaults
 from ..config import Config
 from ..models import AuditLog, Generation, Group, User, Vault, VaultAccess, VaultLock, utcnow
 
@@ -73,6 +73,8 @@ def _vault_json(db: DbSession, vault: Vault, permission: str | None, user: User)
         "size_bytes": vault.size_bytes,
         "locked_by": vaults.holder_name(db, lock) if lock else None,
         "locked_until": lock.expires_at.isoformat() if lock else None,
+        "generations": len(history.listing(db, vault.id)),
+        "history_bytes": history.total_bytes(db, vault.id),
     }
 
 
@@ -288,6 +290,8 @@ async def write_content(
     etag, size = storage.write(vault_id, body)
     vault.etag = etag
     vault.size_bytes = size
+    # Every save is kept. Nothing here ever deletes on its own.
+    history.keep(db, vault, body, user)
     # The write counts as activity: the lock must not expire while someone is
     # demonstrably working.
     lock.expires_at = utcnow() + dt.timedelta(seconds=config.vault.lock_ttl_seconds)
@@ -370,3 +374,120 @@ def release_lock(
         return {"released": broken}
     _require_permission(db, user, vault_id, vaults.READWRITE)
     return {"released": vaults.release(db, vault_id, request.headers.get(LOCK_HEADER, ""))}
+
+
+# ------------------------------------------------------------------- history
+
+
+@router.get("/{vault_id}/history")
+def list_history(
+    vault_id: str,
+    user: User = Depends(deps.require_full_user),
+    db: DbSession = Depends(deps.get_db),
+    config: Config = Depends(deps.get_config),
+) -> dict:
+    _get_vault(db, vault_id)
+    _require_permission(db, user, vault_id, vaults.READ)
+    total = history.total_bytes(db, vault_id)
+    return {
+        "generations": [history.to_json(db, g) for g in history.listing(db, vault_id)],
+        "total_bytes": total,
+        # Not a limit - a mark. What goes is decided by a person.
+        "warn": total >= config.vault.history_warn_bytes,
+        "warn_bytes": config.vault.history_warn_bytes,
+    }
+
+
+@router.get("/{vault_id}/history/{seq}/content")
+def read_generation(
+    vault_id: str,
+    seq: int,
+    user: User = Depends(deps.require_full_user),
+    db: DbSession = Depends(deps.get_db),
+):
+    """Hands out an old state - encrypted, like everything here.
+
+    Read permission is enough: it is the same vault, and without the master
+    password it is a block of noise either way.
+    """
+    _get_vault(db, vault_id)
+    _require_permission(db, user, vault_id, vaults.READ)
+    text = storage.read_generation(vault_id, seq)
+    if text is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown generation")
+    return PlainTextResponse(
+        text,
+        media_type="application/x-ndjson",
+        headers={"Content-Disposition": f'attachment; filename="vault-{seq:06d}.ndjson"'},
+    )
+
+
+@router.post("/{vault_id}/history/{seq}/restore",
+             dependencies=[Depends(deps.require_csrf_header)])
+def restore_generation(
+    vault_id: str,
+    seq: int,
+    request: Request,
+    user: User = Depends(deps.require_full_user),
+    db: DbSession = Depends(deps.get_db),
+    config: Config = Depends(deps.get_config),
+) -> dict:
+    """Puts an old state back - as a new generation.
+
+    Not a rewind: the history stays gapless and the restore itself can be
+    undone. Write permission is enough, because whoever may write could produce
+    the same result by hand - restoring only makes it possible at all.
+
+    The lock is required, unlike If-Match: replacing the content is the point
+    here, but nobody may be editing while it happens.
+    """
+    vault = _get_vault(db, vault_id)
+    _require_permission(db, user, vault_id, vaults.READWRITE)
+
+    lock = vaults.active_lock(db, vault_id)
+    if lock is None or lock.token != request.headers.get(LOCK_HEADER):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="no valid lock - acquire one before restoring",
+        )
+
+    text = storage.read_generation(vault_id, seq)
+    if text is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown generation")
+
+    etag, size = storage.write(vault_id, text)
+    vault.etag = etag
+    vault.size_bytes = size
+    generation = history.keep(db, vault, text, user, note=f"restored from #{seq}")
+    _audit(db, user, "vault_restored", vault.name, f"#{seq} -> #{generation.seq}")
+    return {"etag": etag, "size_bytes": size, "generation": generation.seq}
+
+
+@router.delete("/{vault_id}/history/{seq}", dependencies=[Depends(deps.require_csrf_header)])
+def delete_generation(
+    vault_id: str,
+    seq: int,
+    admin: User = Depends(deps.require_admin),
+    db: DbSession = Depends(deps.get_db),
+) -> dict:
+    """Deleting is for administrators - it is the one step that cannot be undone."""
+    vault = _get_vault(db, vault_id)
+    if not history.drop(db, vault_id, seq):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown generation")
+    _audit(db, admin, "vault_generation_deleted", vault.name, f"#{seq}")
+    return {"ok": True}
+
+
+@router.delete("/{vault_id}/history", dependencies=[Depends(deps.require_csrf_header)])
+def delete_history(
+    vault_id: str,
+    before: int | None = None,
+    admin: User = Depends(deps.require_admin),
+    db: DbSession = Depends(deps.get_db),
+) -> dict:
+    """Everything, or everything below a sequence number. The current file stays."""
+    vault = _get_vault(db, vault_id)
+    removed = history.drop_many(db, vault_id, before_seq=before)
+    _audit(db, admin, "vault_history_deleted", vault.name,
+           f"{removed} generation(s)" + (f" before #{before}" if before else ""))
+    return {"removed": removed}

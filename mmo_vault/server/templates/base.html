@@ -73,10 +73,15 @@ code{font-family:var(--mono); font-size:13px; background:var(--surface-high);
 // Every state-changing call carries this header. Together with SameSite=Lax it
 // is what stands between the service and a cross-site request.
 async function api(path, options){
-  const response = await fetch(path, Object.assign({
-    headers: Object.assign({'Content-Type':'application/json','X-Vault-Request':'1'},
-                           (options||{}).headers||{})
-  }, options||{}));
+  // The headers have to be applied AFTER the options are spread. The other way
+  // round, a caller passing its own headers would silently drop
+  // X-Vault-Request - and every such call would be refused with a 403.
+  const settings = Object.assign({}, options || {});
+  settings.headers = Object.assign(
+    {'Content-Type':'application/json', 'X-Vault-Request':'1'},
+    (options || {}).headers || {}
+  );
+  const response = await fetch(path, settings);
   let body = null;
   try{ body = await response.json(); }catch(err){ /* 204 and friends */ }
   if(!response.ok){

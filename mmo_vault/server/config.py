@@ -63,6 +63,10 @@ class VaultConfig:
     # Deliberately longer than the client-side auto-lock of five minutes: the
     # lock must not expire before the person editing does.
     lock_ttl_seconds: int = 600
+    # Nothing is ever cleaned up automatically, so the history grows with every
+    # save. Instead of a deadline there is a mark from which the interface says
+    # so - the decision what goes stays with a person.
+    history_warn_bytes: int = 200 * 1024 * 1024
 
 
 @dataclass

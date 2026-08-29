@@ -35,7 +35,7 @@
 <h2>Vaults</h2>
 <div class="card">
   <table id="vaults"><thead><tr>
-    <th>Vault</th><th>Freigaben</th><th>Zustand</th><th>Größe</th><th></th>
+    <th>Vault</th><th>Freigaben</th><th>Zustand</th><th>Größe</th><th>Historie</th><th></th>
   </tr></thead><tbody></tbody></table>
   <div class="row" style="margin-top:12px;">
     <input id="newVaultName" placeholder="Name" style="flex:1 1 160px;">
@@ -45,6 +45,21 @@
   <p class="muted" style="margin:10px 0 0;">
     Ein neuer Vault ist eine leere Hülle. Angelegt wird er im Browser des
     ersten Benutzers, der ein Master-Passwort vergibt — der Server sieht es nie.
+  </p>
+</div>
+
+<div class="card" id="historyPanel" style="display:none;">
+  <div class="topbar" style="margin-bottom:10px;">
+    <h2 id="historyTitle" style="margin:0;"></h2>
+    <button id="btnCloseHistory">Schließen</button>
+  </div>
+  <p id="historySummary" class="muted"></p>
+  <table id="history"><thead><tr>
+    <th>Nr.</th><th>Zeitpunkt</th><th>Wer</th><th>Größe</th><th>Vermerk</th><th></th>
+  </tr></thead><tbody></tbody></table>
+  <p class="muted" style="margin:12px 0 0;">
+    Wiederherstellen schreibt eine <em>neue</em> Generation, statt zurückzuspulen —
+    der Verlauf bleibt lückenlos und der Schritt selbst umkehrbar.
   </p>
 </div>
 
@@ -137,6 +152,16 @@ async function loadAll(){
     cell(row, vault.locked_by ? 'in Bearbeitung: ' + vault.locked_by
             : vault.empty ? 'leer' : 'belegt');
     cell(row, formatBytes(vault.size_bytes));
+    const historyCell = cell(row, vault.generations
+      ? vault.generations + ' × ' + formatBytes(vault.history_bytes)
+      : '—');
+    if(vault.generations){
+      const link = document.createElement('button');
+      link.textContent = 'ansehen';
+      link.style.marginLeft = '8px';
+      link.onclick = () => showHistory(vault);
+      historyCell.appendChild(link);
+    }
     const actions = [
       ['Freigeben', () => {
         const value = prompt(
@@ -241,6 +266,58 @@ document.getElementById('btnAddUser').onclick = () => guard(async () => {
     document.getElementById(id).value = '');
   document.getElementById('newUserAdmin').checked = false;
 });
+
+// Die Historie steht in einem eigenen Bereich unter der Tabelle: sie ist
+// selten gebraucht und wuerde die Uebersicht sonst sprengen.
+async function showHistory(vault){
+  const panel = document.getElementById('historyPanel');
+  panel.style.display = 'block';
+  document.getElementById('historyTitle').textContent = 'Historie: ' + vault.name;
+  const body = document.querySelector('#history tbody');
+  body.innerHTML = '';
+
+  const data = await api('/api/vaults/' + vault.id + '/history');
+  document.getElementById('historySummary').textContent =
+    data.generations.length + ' Generation(en), zusammen ' + formatBytes(data.total_bytes)
+    + (data.warn ? ' — mehr als ' + formatBytes(data.warn_bytes)
+                   + '. Nichts verfaellt von selbst; aufgeraeumt wird hier.' : '');
+  document.getElementById('historySummary').className = data.warn ? 'msg show error' : 'muted';
+
+  data.generations.forEach(generation => {
+    const row = document.createElement('tr');
+    cell(row, '#' + generation.seq);
+    cell(row, new Date(generation.created_at + 'Z').toLocaleString());
+    cell(row, generation.author || '—');
+    cell(row, formatBytes(generation.size_bytes));
+    cell(row, generation.note || '');
+    actionCell(row, [
+      ['Herunterladen', () => {
+        location.href = '/api/vaults/' + vault.id + '/history/' + generation.seq + '/content';
+      }],
+      ['Wiederherstellen', () => guard(async () => {
+        // Braucht die Sperre: der ETag kann diesen Fall nicht abfangen, weil
+        // der Inhalt ja gerade ersetzt werden soll.
+        const lock = await api('/api/vaults/' + vault.id + '/lock', { method:'POST' });
+        try{
+          await api('/api/vaults/' + vault.id + '/history/' + generation.seq + '/restore',
+                    { method:'POST', headers: {'X-Vault-Lock': lock.token} });
+        } finally {
+          await api('/api/vaults/' + vault.id + '/lock',
+                    { method:'DELETE', headers: {'X-Vault-Lock': lock.token} });
+        }
+        show('message', 'Stand #' + generation.seq + ' wiederhergestellt — als neue Generation.', 'ok');
+      })],
+      ['Löschen', () => { if(confirm('Generation #' + generation.seq + ' endgueltig loeschen?'))
+        guard(() => api('/api/vaults/' + vault.id + '/history/' + generation.seq,
+                        { method:'DELETE' })); }, true]
+    ]);
+    body.appendChild(row);
+  });
+}
+
+document.getElementById('btnCloseHistory').onclick = () => {
+  document.getElementById('historyPanel').style.display = 'none';
+};
 
 document.getElementById('btnAddVault').onclick = () => guard(async () => {
   await api('/api/vaults', { method:'POST', body: JSON.stringify({

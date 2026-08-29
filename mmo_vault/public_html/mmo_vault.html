@@ -272,6 +272,29 @@ h1.brand{
 .status-msg.error{display:block; background: var(--error-container); color:#ffdad6;}
 .status-msg.info{display:block; background: var(--secondary-container); color: var(--on-secondary-container);}
 
+/* Server mode: account row, vault list and the divider towards the local file. */
+.server-user-row{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  font-size:12.5px; color:var(--on-surface-variant); margin-bottom:10px;
+}
+.server-vault{
+  display:flex; align-items:center; gap:10px; width:100%;
+  padding:12px 14px; margin-bottom:8px; text-align:left;
+  background:var(--surface-container-high); color:var(--on-surface);
+  border:1px solid var(--outline-variant); border-radius:var(--radius-m);
+  font-family:inherit; font-size:14px; cursor:pointer;
+}
+.server-vault:hover{ background:var(--surface-container-highest); }
+.server-vault .vault-name{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.server-vault .vault-note{ font-size:11px; color:var(--on-surface-variant); flex-shrink:0; }
+.lock-divider{
+  display:flex; align-items:center; gap:10px;
+  margin:14px 0 12px; font-size:11.5px; color:var(--on-surface-variant);
+}
+.lock-divider::before, .lock-divider::after{
+  content:''; flex:1; height:1px; background:var(--outline-variant);
+}
+
 /* ---------- Main app ---------- */
 #appScreen{display:none; flex:1; flex-direction:column; min-height:100vh; min-height:100dvh;}
 .topbar{
@@ -765,6 +788,16 @@ h1.brand{
 
         <div id="unlockView">
       <div id="fileStep">
+        <!-- Only filled in server mode; offline the adapter is missing and the
+             whole block stays hidden. -->
+        <div id="serverStep" style="display:none;">
+          <div class="server-user-row">
+            <span id="serverUserLabel"></span>
+            <button class="btn btn-text" id="btnServerLogout" data-i18n="server_logout">Abmelden</button>
+          </div>
+          <div id="serverVaultList"></div>
+          <div class="lock-divider"><span data-i18n="server_or_local">oder lokale Datei</span></div>
+        </div>
         <div class="lock-secondary-row" id="rememberedFileRow" style="display:none;">
           <button class="btn btn-tonal" id="btnUseRememberedFile"><span class="remembered-file-label" id="rememberedFileLabel" data-i18n="last_file_default">Letzte Datei laden</span></button>
           <button class="btn btn-outline btn-remove" id="btnForgetRememberedFile" data-i18n-title="forget_link" title="Verknüpfung entfernen">✕</button>
@@ -1359,6 +1392,17 @@ const I18N = {
     remove_tt: 'Entfernen',
     last_file_prefix: 'Letzte Datei: ',
     last_file_default: 'Letzte Datei laden',
+    server_logout: 'Abmelden',
+    server_or_local: 'oder lokale Datei',
+    server_no_vaults: 'Für dieses Konto ist noch kein Vault freigegeben.',
+    server_read_only: 'nur lesen',
+    server_locked_by: 'in Bearbeitung: {user}',
+    server_loading: 'Server-Vaults werden geladen…',
+    err_server_list: 'Die Vault-Liste konnte nicht geladen werden: ',
+    err_server_read: 'Der Vault konnte nicht geladen werden: ',
+    err_server_write: 'Der Vault konnte nicht gespeichert werden: ',
+    err_server_conflict: 'Der Vault wurde zwischenzeitlich an anderer Stelle geändert. Deine Änderungen sind noch im Speicher — lade neu oder speichere sie als neue Datei.',
+    toast_saved_server: 'Auf dem Server gespeichert.',
     history_empty: 'Noch keine Änderungen protokolliert.',
     trash_chip: 'Papierkorb ({n})',
     trash_badge: 'GELÖSCHT',
@@ -1612,6 +1656,17 @@ const I18N = {
     remove_tt: 'Remove',
     last_file_prefix: 'Last file: ',
     last_file_default: 'Load last file',
+    server_logout: 'Sign out',
+    server_or_local: 'or a local file',
+    server_no_vaults: 'No vault has been shared with this account yet.',
+    server_read_only: 'read only',
+    server_locked_by: 'being edited by {user}',
+    server_loading: 'Loading server vaults…',
+    err_server_list: 'The vault list could not be loaded: ',
+    err_server_read: 'The vault could not be loaded: ',
+    err_server_write: 'The vault could not be saved: ',
+    err_server_conflict: 'The vault was changed elsewhere in the meantime. Your changes are still in memory - reload, or save them as a new file.',
+    toast_saved_server: 'Saved on the server.',
     history_empty: 'No changes logged yet.',
     trash_chip: 'Trash ({n})',
     trash_badge: 'DELETED',
@@ -1883,7 +1938,7 @@ let state = {
   fsaBlocked: false,   // true when the File System Access API is blocked in the current frame (e.g. cross-origin iframe)
   nextNum: 1,          // next sequential entry number, stored along with the vault
   autoLockMinutes: DEFAULT_AUTO_LOCK_MINUTES, // 0 = disabled; stored in the vault
-  fileHandle: null,    // File System Access handle, if available
+  source: null,        // where the vault is stored, see "Storage source"; null = not chosen yet
   pendingVault: null,  // parsed, still encrypted file between selection and unlocking
   pendingSource: null
 };
@@ -2488,7 +2543,7 @@ function showCreateView(){
   // Identifier for the password manager, so a newly chosen master password
   // can be stored in a way that can be matched up later.
   document.getElementById('createUser').value =
-    (state.fileHandle && state.fileHandle.name) || 'mmo-vault';
+    sourceName('mmo-vault');
   document.getElementById('unlockView').style.display = 'none';
   document.getElementById('createView').style.display = 'block';
   setLockStatus('', '');
@@ -2546,7 +2601,7 @@ document.getElementById('createForm').addEventListener('submit', async (e) => {
   state.nextNum = 1;
   state.autoLockMinutes = DEFAULT_AUTO_LOCK_MINUTES;
   addHistory('hist_vault_created', '');
-  state.fileHandle = null;
+  state.source = null;
   state.dirty = true; // a freshly created vault is not in any file yet
   document.getElementById('newPassword').value = '';
   document.getElementById('newPasswordConfirm').value = '';
@@ -2627,12 +2682,13 @@ function showPasswordStep(){
   // Identifier for the password manager: the file name makes the stored entry
   // attributable later instead of nameless.
   document.getElementById('unlockUser').value =
-    (state.fileHandle && state.fileHandle.name) || 'mmo-vault';
+    sourceName('mmo-vault');
   document.getElementById('unlockPassword').focus();
 }
 function showFileStep(){
   document.getElementById('passwordStep').style.display = 'none';
   document.getElementById('fileStep').style.display = 'block';
+  refreshServerVaults();
   document.getElementById('unlockPassword').value = '';
   state.pendingVault = null;
   setLockStatus('', '');
@@ -2652,7 +2708,7 @@ async function useRememberedFile(){
     try{ vault = parseVaultText(text); }catch(err){ setLockStatus(t('err_invalid_vault'), 'error'); return; }
     state.pendingVault = vault;
     state.pendingSource = 'file';
-    state.fileHandle = handle;
+    state.source = fsaSource(handle);
     setLockStatus(t('status_file_loaded') + handle.name, 'info');
     showPasswordStep();
   }catch(err){
@@ -2661,7 +2717,7 @@ async function useRememberedFile(){
     // handle then points at nothing. Clear the link automatically so the button
     // does not get stuck on the same error forever.
     if(err.name === 'NotReadableError' || /could not be read/i.test(err.message || '')){
-      state.fileHandle = null;
+      state.source = null;
       await clearStoredFileHandle();
       await refreshRememberedFileButton();
       setLockStatus(t('err_file_unreadable'), 'error');
@@ -2672,7 +2728,7 @@ async function useRememberedFile(){
 }
 
 async function forgetRememberedFile(){
-  state.fileHandle = null;
+  state.source = null;
   await clearStoredFileHandle();
   await refreshRememberedFileButton();
   showToast(t('toast_link_forgotten'));
@@ -2696,7 +2752,7 @@ async function loadFileViaPicker(){
       try{ vault = parseVaultText(text); }catch(err){ setLockStatus(t('err_invalid_vault'), 'error'); return; }
       state.pendingVault = vault;
       state.pendingSource = 'file';
-      state.fileHandle = handle;
+      state.source = fsaSource(handle);
       await storeFileHandle(handle);
       await refreshRememberedFileButton();
       setLockStatus(t('status_file_loaded') + handle.name, 'info');
@@ -2708,7 +2764,7 @@ async function loadFileViaPicker(){
         // the File System Access API is fundamentally blocked there, not a bug.
         // From now on use the classic file dialog directly for this session.
         state.fsaBlocked = true;
-        state.fileHandle = null;
+        state.source = null;
         await refreshRememberedFileButton();
         setLockStatus(t('info_fsa_blocked'), 'info');
         document.getElementById('fileInput').click();
@@ -2734,13 +2790,126 @@ document.getElementById('fileInput').addEventListener('change', async (e) => {
     // The classic dialog does not yield a writable handle. Any handle still set
     // from a previously opened file has to go, otherwise a later save would
     // write into the wrong file.
-    state.fileHandle = null;
+    state.source = null;
     setLockStatus(t('status_file_loaded') + file.name, 'info');
     showPasswordStep();
   }catch(err){
     setLockStatus(t('err_file_read') + err.message, 'error');
   }
 });
+
+/* ============================================================
+   Server mode
+
+   Offline this whole chapter is inert: window.mmoVaultServer only exists when
+   the service injected it while serving the page (see docs/plan_server.md). The
+   file shipped for local use contains no URL and no fetch call - its CSP still
+   forbids any connection at all.
+   ============================================================ */
+
+function serverAdapter(){
+  // Deliberately looked up on every call rather than cached once at load time:
+  // the injected block may register itself later than this script runs.
+  return (typeof window !== 'undefined' && window.mmoVaultServer) || null;
+}
+
+function isServerMode(){ return !!serverAdapter(); }
+
+/* Draws the list of vaults this account may open. Runs only in server mode. */
+async function refreshServerVaults(){
+  const adapter = serverAdapter();
+  const step = document.getElementById('serverStep');
+  if(!adapter){ step.style.display = 'none'; return; }
+
+  const list = document.getElementById('serverVaultList');
+  step.style.display = 'block';
+  list.textContent = t('server_loading');
+  try{
+    const me = await adapter.me();
+    document.getElementById('serverUserLabel').textContent = me && me.user ? me.user : '';
+    const vaults = await adapter.listVaults();
+    list.innerHTML = '';
+    if(!vaults.length){
+      const empty = document.createElement('div');
+      empty.className = 'history-empty';
+      empty.textContent = t('server_no_vaults');
+      list.appendChild(empty);
+      return;
+    }
+    vaults.forEach(vault => {
+      const row = document.createElement('button');
+      row.className = 'server-vault';
+      row.type = 'button';
+      const name = document.createElement('span');
+      name.className = 'vault-name';
+      name.textContent = vault.name;
+      row.appendChild(name);
+      // A note only where it changes what the user can do.
+      const note = vault.lockedBy ? t('server_locked_by', { user: vault.lockedBy })
+                 : vault.permission === 'read' ? t('server_read_only')
+                 : '';
+      if(note){
+        const noteEl = document.createElement('span');
+        noteEl.className = 'vault-note';
+        noteEl.textContent = note;
+        row.appendChild(noteEl);
+      }
+      row.onclick = () => openServerVault(vault);
+      list.appendChild(row);
+    });
+  }catch(err){
+    list.textContent = t('err_server_list') + (err.message || err);
+  }
+}
+
+/* Loads a server vault and hands over to the password step. From there on
+   nothing differs from the file case - the master password never leaves the
+   browser, and the service never sees it. */
+async function openServerVault(vault){
+  const adapter = serverAdapter();
+  if(!adapter) return;
+  const source = serverSource(vault, adapter);
+  try{
+    const text = await source.read();
+    let parsed;
+    try{ parsed = parseVaultText(text); }
+    catch(err){ setLockStatus(t('err_invalid_vault'), 'error'); return; }
+    state.pendingVault = parsed;
+    state.pendingSource = 'server';
+    state.source = source;
+    setLockStatus(t('status_file_loaded') + vault.name, 'info');
+    showPasswordStep();
+  }catch(err){
+    setLockStatus(t('err_server_read') + (err.message || err), 'error');
+  }
+}
+
+/* Writing to the server. No picker and no download fallback: it is written
+   where it came from, or not at all - and the caller learns which. */
+async function saveToServer(jsonText){
+  try{
+    await state.source.write(jsonText);
+    state.dirty = false;
+    state.lastFileBytes = jsonText.length;
+    updateSourceLabel();
+    showToast(t('toast_saved_server'));
+    warnAboutSize(jsonText.length);
+    return true;
+  }catch(err){
+    // A conflict is not a failure of the connection but a second writer. The
+    // changes stay in memory and "unsaved" stays in place.
+    showToast(err && err.conflict ? t('err_server_conflict')
+                                  : t('err_server_write') + (err.message || err));
+    return false;
+  }
+}
+
+document.getElementById('btnServerLogout').onclick = async () => {
+  const adapter = serverAdapter();
+  if(!adapter) return;
+  lockApp();
+  try{ await adapter.logout(); }catch(err){ /* the session may already be gone */ }
+};
 
 /* ---------- Buttons for file management on the lock screen ---------- */
 
@@ -2882,6 +3051,11 @@ function enforceSecureContext(){
   }
   applyStaticTranslations();
   refreshRememberedFileButton();
+  // In server mode the vault list belongs on the lock screen from the start.
+  // The file step is already visible in the markup, so showFileStep() never
+  // runs for the initial view. Without an adapter the call hides the block and
+  // returns - that keeps the decision in one place.
+  refreshServerVaults();
   enforceSecureContext();
 })();
 
@@ -2891,7 +3065,7 @@ function enterApp(){
   document.getElementById('lockScreen').style.display = 'none';
   document.getElementById('appScreen').style.display = 'flex';
   document.getElementById('unlockPassword').value = '';
-  document.getElementById('currentFileLabel').textContent = state.fileHandle ? state.fileHandle.name : '';
+  updateSourceLabel();
   // Search and filter state belong to the previous session - otherwise a freshly
   // unlocked vault looks empty because of an old search term.
   document.getElementById('searchInput').value = '';
@@ -2965,7 +3139,7 @@ function lockApp(){
   state.nextNum = 1;
   state.pendingVault = null;
   state.pendingSource = null;
-  state.fileHandle = null;
+  state.source = null;
   state.dirty = false;
   totpCodeCache.clear();
   cancelClipboardClear();
@@ -2992,6 +3166,9 @@ function lockApp(){
   clearInterval(autoLockDisplayHandle);
   autoLockDeadline = null;
   refreshRememberedFileButton();
+  // The service session outlives the lock: the list stays, only the decrypted
+  // data is gone.
+  refreshServerVaults();
 }
 
 ['keydown','click','touchstart'].forEach(evt=>{
@@ -3135,7 +3312,7 @@ const changePasswordOverlay = document.getElementById('changePasswordOverlay');
 
 function openChangePasswordDialog(){
   document.getElementById('cpUser').value =
-    (state.fileHandle && state.fileHandle.name) || 'mmo-vault';
+    sourceName('mmo-vault');
   document.getElementById('cpCurrentPassword').value = '';
   document.getElementById('cpNewPassword').value = '';
   document.getElementById('cpNewPasswordConfirm').value = '';
@@ -3371,20 +3548,98 @@ async function offerSaveFallback(jsonText, reason){
     // Necessary because a handle replaced by sync is dead for good.
     // Dropping it is only provisional though: if the user cancels the location
     // picker they have chosen nothing and the existing link has to come back.
-    const previousHandle = state.fileHandle;
-    const previousLabel = document.getElementById('currentFileLabel').textContent;
-    state.fileHandle = null;
-    document.getElementById('currentFileLabel').textContent = '';
+    const previousSource = state.source;
+    state.source = null;
+    updateSourceLabel();
     const saved = await saveToFile();
-    // Only restore when no new handle came about either - otherwise a file that
+    // Only restore when no new source came about either - otherwise a file that
     // was successfully picked would be overwritten by the old one again.
-    if(!saved && !state.fileHandle){
-      state.fileHandle = previousHandle;
-      document.getElementById('currentFileLabel').textContent = previousLabel;
+    if(!saved && !state.source){
+      state.source = previousSource;
+      updateSourceLabel();
     }
     return saved;
   }
   return false; // Cancel: "unsaved" stays in place
+}
+
+/* ============================================================
+   Storage source
+
+   A vault can live in three places, and everything outside these factories is
+   meant to be unaware of which one it is. Before this abstraction the File
+   System Access handle was reached into from a dozen places, which made every
+   further location a change in a dozen places.
+
+   read()  is only meaningful where the location can be read back. The download
+           fallback cannot, and says so through readable:false.
+   write() returns true only when the data really was written out. Failures are
+           thrown, not swallowed - saveToFile() decides what to offer then.
+   ============================================================ */
+
+function fsaSource(handle){
+  return {
+    kind: 'fsa',
+    get name(){ return handle.name; },
+    handle,
+    readable: true,
+    writable: true,
+    async read(){ return (await handle.getFile()).text(); },
+    async write(text){
+      await writeVaultToHandle(handle, text);
+      await storeFileHandle(handle);
+      return true;
+    }
+  };
+}
+
+/* The classic file dialog yields no writable handle: there is nothing to read
+   back from and nothing to write to - every save is a fresh download. */
+function downloadSource(name){
+  return {
+    kind: 'download',
+    name: name || 'mmo-vault.json',
+    readable: false,
+    writable: false,
+    async read(){ throw new Error('a download source cannot be read back'); },
+    async write(text){ return downloadVaultFile(text); }
+  };
+}
+
+/* Server-side vault. Everything network related sits in the adapter the server
+   injects (see serverAdapter()); this file never builds a URL of its own. */
+function serverSource(vault, adapter){
+  let etag = vault.etag || null;
+  return {
+    kind: 'server',
+    name: vault.name,
+    id: vault.id,
+    readable: true,
+    writable: vault.permission === 'readwrite',
+    get etag(){ return etag; },
+    async read(){
+      const result = await adapter.readVault(vault.id);
+      etag = result.etag;
+      return result.text;
+    },
+    async write(text){
+      // The ETag decides, not the lock: a stale one means somebody else wrote
+      // in the meantime, and the adapter reports that as a conflict.
+      const result = await adapter.writeVault(vault.id, text, etag);
+      etag = result.etag;
+      return true;
+    }
+  };
+}
+
+/* Display name for dialogs and downloads. */
+function sourceName(fallback){
+  return (state.source && state.source.name) || fallback;
+}
+
+function updateSourceLabel(){
+  document.getElementById('currentFileLabel').textContent =
+    state.source ? state.source.name : '';
 }
 
 function downloadVaultFile(jsonText){
@@ -3392,7 +3647,7 @@ function downloadVaultFile(jsonText){
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = (state.fileHandle && state.fileHandle.name) || 'mmo-vault.json';
+  a.download = sourceName('mmo-vault.json');
   document.body.appendChild(a); a.click(); a.remove();
   // Do not revoke immediately - that aborts the download in some browsers.
   setTimeout(()=> URL.revokeObjectURL(url), 10000);
@@ -3410,16 +3665,22 @@ async function saveToFile(){
   if(!state.key) return false;
   const jsonText = (await buildVaultLines()).join('\n');
 
+  // A server vault has neither a picker nor a download fallback: it is written
+  // where it came from, or not at all.
+  if(state.source && state.source.kind === 'server'){
+    return saveToServer(jsonText);
+  }
+
   if(!('showSaveFilePicker' in window) || state.fsaBlocked){
     return downloadVaultFile(jsonText);
   }
 
-  if(!state.fileHandle){
+  if(!state.source || state.source.kind !== 'fsa'){
     try{
-      state.fileHandle = await window.showSaveFilePicker({
+      state.source = fsaSource(await window.showSaveFilePicker({
         suggestedName: 'mmo-vault.json',
         types: [{ description: 'Vault-Datei', accept: {'application/json': ['.json']} }]
-      });
+      }));
     }catch(err){
       if(err.name === 'AbortError'){
         // The user deliberately cancelled the save dialog. No silent download,
@@ -3438,9 +3699,8 @@ async function saveToFile(){
   }
 
   try{
-    await writeVaultToHandle(state.fileHandle, jsonText);
-    await storeFileHandle(state.fileHandle);
-    document.getElementById('currentFileLabel').textContent = state.fileHandle.name;
+    await state.source.write(jsonText);
+    updateSourceLabel();
     state.dirty = false;
     state.lastFileBytes = jsonText.length;
     showToast(t('toast_saved_file'));

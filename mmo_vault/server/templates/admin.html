@@ -32,6 +32,22 @@
   </p>
 </div>
 
+<h2>Vaults</h2>
+<div class="card">
+  <table id="vaults"><thead><tr>
+    <th>Vault</th><th>Freigaben</th><th>Zustand</th><th>Größe</th><th></th>
+  </tr></thead><tbody></tbody></table>
+  <div class="row" style="margin-top:12px;">
+    <input id="newVaultName" placeholder="Name" style="flex:1 1 160px;">
+    <input id="newVaultDesc" placeholder="Beschreibung" style="flex:2 1 200px;">
+    <button class="primary" id="btnAddVault">Anlegen</button>
+  </div>
+  <p class="muted" style="margin:10px 0 0;">
+    Ein neuer Vault ist eine leere Hülle. Angelegt wird er im Browser des
+    ersten Benutzers, der ein Master-Passwort vergibt — der Server sieht es nie.
+  </p>
+</div>
+
 <h2>Gruppen</h2>
 <div class="card">
   <table id="groups"><thead><tr>
@@ -92,11 +108,64 @@ async function guard(action){
   catch(err){ show('message', err.message || String(err)); }
 }
 
+function formatBytes(bytes){
+  if(!bytes) return '—';
+  const units = ['B','KB','MB'];
+  let value = bytes, unit = 0;
+  while(value >= 1024 && unit < units.length - 1){ value /= 1024; unit++; }
+  return value.toFixed(unit ? 1 : 0) + ' ' + units[unit];
+}
+
 async function loadAll(){
-  const [users, groups, providerList] = await Promise.all([
-    api('/api/users'), api('/api/groups'), api('/api/providers')
+  const [users, groups, providerList, vaultList] = await Promise.all([
+    api('/api/users'), api('/api/groups'), api('/api/providers'), api('/api/vaults')
   ]);
   providers = providerList;
+
+  const vaultBody = document.querySelector('#vaults tbody');
+  vaultBody.innerHTML = '';
+  for(const vault of vaultList){
+    const row = document.createElement('tr');
+    cell(row, vault.name).title = vault.description || '';
+    // Freigaben stehen an einem eigenen Endpunkt: die Liste selbst verraet nur,
+    // was der Anfragende darf.
+    const access = await api('/api/vaults/' + vault.id + '/access');
+    cell(row, access.length
+      ? access.map(a => (a.subject_type === 'group' ? '#' : '') + a.subject
+                        + (a.permission === 'read' ? ' (lesen)' : '')).join(', ')
+      : 'niemand');
+    cell(row, vault.locked_by ? 'in Bearbeitung: ' + vault.locked_by
+            : vault.empty ? 'leer' : 'belegt');
+    cell(row, formatBytes(vault.size_bytes));
+    const actions = [
+      ['Freigeben', () => {
+        const value = prompt(
+          'Freigaben, kommagetrennt. Gruppen mit # davor, "!" fuer nur lesen. '
+          + 'Beispiel: mueller, #team!',
+          access.map(a => (a.subject_type === 'group' ? '#' : '') + a.subject
+                          + (a.permission === 'read' ? '!' : '')).join(', '));
+        if(value === null) return;
+        const entries = value.split(',').map(s => s.trim()).filter(Boolean).map(token => {
+          const read = token.endsWith('!');
+          const name = (read ? token.slice(0, -1) : token).trim();
+          const isGroup = name.startsWith('#');
+          return { subject_type: isGroup ? 'group' : 'user',
+                   subject: isGroup ? name.slice(1) : name,
+                   permission: read ? 'read' : 'readwrite' };
+        });
+        guard(() => api('/api/vaults/' + vault.id + '/access',
+                        { method:'PUT', body: JSON.stringify({ entries }) }));
+      }],
+      ['Löschen', () => { if(confirm('Vault ' + vault.name + ' mit allen Daten löschen?'))
+        guard(() => api('/api/vaults/' + vault.id, { method:'DELETE' })); }, true]
+    ];
+    if(vault.locked_by){
+      actions.splice(1, 0, ['Sperre brechen', () => guard(() =>
+        api('/api/vaults/' + vault.id + '/lock?force=1', { method:'DELETE' }))]);
+    }
+    actionCell(row, actions);
+    vaultBody.appendChild(row);
+  }
 
   const userBody = document.querySelector('#users tbody');
   userBody.innerHTML = '';
@@ -171,6 +240,15 @@ document.getElementById('btnAddUser').onclick = () => guard(async () => {
   ['newUserName','newUserMail','newUserGroups'].forEach(id =>
     document.getElementById(id).value = '');
   document.getElementById('newUserAdmin').checked = false;
+});
+
+document.getElementById('btnAddVault').onclick = () => guard(async () => {
+  await api('/api/vaults', { method:'POST', body: JSON.stringify({
+    name: document.getElementById('newVaultName').value.trim(),
+    description: document.getElementById('newVaultDesc').value.trim()
+  })});
+  document.getElementById('newVaultName').value = '';
+  document.getElementById('newVaultDesc').value = '';
 });
 
 document.getElementById('btnAddGroup').onclick = () => guard(async () => {

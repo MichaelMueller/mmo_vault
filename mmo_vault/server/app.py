@@ -16,7 +16,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import db, deps
 from .config import Config
 from .models import Provider, User
-from .routers import admin_api, auth, oidc, pages
+from .routers import admin_api, auth, oidc, pages, vault_api
 
 APP_VERSION = "2.0.0-dev"
 
@@ -57,6 +57,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.include_router(auth.router)
     app.include_router(oidc.router)
     app.include_router(admin_api.router)
+    app.include_router(vault_api.router)
     app.include_router(pages.router)
 
     @app.get("/api/health")

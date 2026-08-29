@@ -54,11 +54,24 @@ class AuthConfig:
 
 
 @dataclass
+class VaultConfig:
+    """Limits around the stored vault files."""
+
+    # A structural ceiling, not a quota. A vault beyond this is almost always a
+    # mistake, and the browser would struggle with it long before the server.
+    max_size_bytes: int = 25 * 1024 * 1024
+    # Deliberately longer than the client-side auto-lock of five minutes: the
+    # lock must not expire before the person editing does.
+    lock_ttl_seconds: int = 600
+
+
+@dataclass
 class Config:
     database_url: str = DEFAULT_DATABASE_URL
     secret_key: str = ""
     server: ServerConfig = field(default_factory=ServerConfig)
     auth: AuthConfig = field(default_factory=AuthConfig)
+    vault: VaultConfig = field(default_factory=VaultConfig)
 
     # ---------------------------------------------------------------- loading
 
@@ -74,6 +87,9 @@ class Config:
             secret_key=raw.get("secret_key", ""),
             server=ServerConfig(**raw.get("server", {})),
             auth=AuthConfig(**raw.get("auth", {})),
+            # A missing section falls back to the defaults, so a configuration
+            # written by an older version keeps working.
+            vault=VaultConfig(**raw.get("vault", {})),
         )
 
     # ---------------------------------------------------------------- writing
@@ -104,6 +120,8 @@ class Config:
         lines += [_toml_pair(k, v) for k, v in asdict(self.server).items()]
         lines += ["", "[auth]"]
         lines += [_toml_pair(k, v) for k, v in asdict(self.auth).items()]
+        lines += ["", "[vault]"]
+        lines += [_toml_pair(k, v) for k, v in asdict(self.vault).items()]
         return "\n".join(lines) + "\n"
 
     # ---------------------------------------------------------------- helpers

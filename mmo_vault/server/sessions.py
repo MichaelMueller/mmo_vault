@@ -23,20 +23,12 @@ COOKIE_NAME = "mmo_vault_session"
 
 
 def create(
-    db: DbSession,
-    config: Config,
-    user: User,
-    *,
-    enrollment_only: bool,
-    strong_auth: bool = False,
-    request: Request | None = None,
+    db: DbSession, config: Config, user: User, *, request: Request | None = None
 ) -> Session:
     session = Session(
         id=new_session_id(),
         user_id=user.id,
         expires_at=utcnow() + dt.timedelta(hours=config.auth.session_hours),
-        enrollment_only=enrollment_only,
-        strong_auth=strong_auth,
         ip=(request.client.host if request and request.client else ""),
         user_agent=(request.headers.get("user-agent", "")[:255] if request else ""),
     )
@@ -51,7 +43,7 @@ def attach_cookie(response: Response, config: Config, session: Session) -> None:
         httponly=True,
         # Only over HTTPS - except when the service deliberately runs on plain
         # localhost, where a Secure cookie would simply never arrive.
-        secure=config.auth.origin.startswith("https://"),
+        secure=config.origin.startswith("https://"),
         samesite="lax",
         max_age=config.auth.session_hours * 3600,
         path="/",
@@ -83,11 +75,6 @@ def revoke(db: DbSession, session: Session) -> None:
 
 
 def revoke_all_for(db: DbSession, user_id: int) -> int:
-    """Used when a device is lost or an account is disabled."""
+    """Used when an account is disabled or its rights change right now."""
     count = db.query(Session).filter(Session.user_id == user_id).delete()
     return int(count or 0)
-
-
-# There is deliberately no promote(): a session that gains privilege gets a
-# NEW id (revoke + create in the registration endpoint). Upgrading the old one
-# in place would keep a cookie alive that was issued for a mere password.

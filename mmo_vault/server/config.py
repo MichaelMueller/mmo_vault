@@ -1,182 +1,155 @@
-"""Configuration of the server variant.
+"""Settings, stored in the database.
 
-Everything lives in one TOML file under var/, written by `setup` and read by
-`start`. Deliberately a plain dataclass and the standard library instead of a
-settings framework: the file is short, it is written by exactly one place, and
-a missing key should produce a clear message rather than a stack trace.
+There is no configuration file. Everything the service needs beyond *where the
+database is* lives in the `setting` table as flat key/value pairs and is read
+into this typed structure. A missing key means its default - so a database
+written by an older version keeps working, and the administration only stores
+what was actually changed.
+
+Reading is cheap (a dozen rows) and happens per request, which is what makes a
+change in the administration take effect without a restart. The exception is
+`server.*`: uvicorn reads those once at start-up.
 """
 
 from __future__ import annotations
 
-import os
 import secrets
-import tomllib
-from dataclasses import dataclass, field, asdict
-from pathlib import Path
+from dataclasses import dataclass, field, fields, is_dataclass
 
-# The project root is three levels up: config.py -> server -> mmo_vault -> root.
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-VAR_DIR = PROJECT_ROOT / "var"
-CONFIG_PATH = VAR_DIR / "config.toml"
+from sqlalchemy.orm import Session as DbSession
 
-DEFAULT_DATABASE_URL = "sqlite:///var/mmo_vault.db"
+from .models import Setting
 
 
 @dataclass
 class ServerConfig:
-    """Uvicorn and the public identity of the service."""
+    """Read once by `start`, handed to uvicorn."""
 
     host: str = "127.0.0.1"
     port: int = 8000
     workers: int = 1
-    # Only switch this on when a reverse proxy really sits in front. It makes
-    # the service trust X-Forwarded-For, and that changes who counts as local.
+    # Only when a reverse proxy really sits in front. It makes the service
+    # trust forwarding headers from the addresses below.
     proxy_headers: bool = False
-    # Who is believed when they send forwarding headers. "*" would mean anyone,
-    # including a client talking to the service directly - keep it at the
-    # proxy's address(es).
     forwarded_allow_ips: str = "127.0.0.1"
 
 
 @dataclass
 class AuthConfig:
-    """Everything about who may sign in and how."""
-
-    # WebAuthn relying party. Asked for during setup instead of guessed from the
-    # Host header: a later change invalidates every passkey.
-    rp_id: str = "localhost"
-    rp_name: str = "MMO Vault"
-    origin: str = "http://localhost:8000"
-    # Password sign-in over loopback. Off by default - see docs/plan_server.md,
-    # chapter 5.4, for why the peer address alone is not enough to decide this.
-    allow_local_password_login: bool = False
-    # How long a freshly created account may use its password to register a
-    # passkey. After that the window has to be reopened with `enroll`.
-    enrollment_hours: int = 72
     session_hours: int = 12
     session_idle_minutes: int = 30
-    # How recently a session must have been opened by passkey or OIDC before it
-    # may register a FURTHER passkey. Short on purpose: signing in again is
-    # cheap, and this is the line between a stolen cookie and a stolen device.
-    reauth_minutes: int = 10
 
 
 @dataclass
 class VaultConfig:
-    """Limits around the stored vault files."""
-
-    # A structural ceiling, not a quota. A vault beyond this is almost always a
-    # mistake, and the browser would struggle with it long before the server.
+    # A structural ceiling, not a quota. The browser struggles long before this.
     max_size_bytes: int = 25 * 1024 * 1024
-    # Deliberately longer than the client-side auto-lock of five minutes: the
+    # Longer than the client-side auto-lock of five minutes on purpose: the
     # lock must not expire before the person editing does.
     lock_ttl_seconds: int = 600
-    # Nothing is ever cleaned up automatically, so the history grows with every
-    # save. Instead of a deadline there is a mark from which the interface says
-    # so - the decision what goes stays with a person.
+    # Nothing is ever cleaned up automatically. This is the mark from which the
+    # interface says so; the decision what goes stays with a person.
     history_warn_bytes: int = 200 * 1024 * 1024
 
 
 @dataclass
 class Config:
-    database_url: str = DEFAULT_DATABASE_URL
+    # The public address, e.g. https://vault.example. Mandatory: the OIDC
+    # redirect URIs are built from it, and they have to be right before the
+    # first sign-in can happen.
+    origin: str = ""
+    # Signs the short-lived OAuth state cookie. Generated on first use.
     secret_key: str = ""
     server: ServerConfig = field(default_factory=ServerConfig)
     auth: AuthConfig = field(default_factory=AuthConfig)
     vault: VaultConfig = field(default_factory=VaultConfig)
 
-    # ---------------------------------------------------------------- loading
-
-    @classmethod
-    def load(cls, path: Path | None = None) -> "Config":
-        path = path or CONFIG_PATH
-        if not path.exists():
-            raise ConfigMissing(path)
-        with path.open("rb") as handle:
-            raw = tomllib.load(handle)
-        return cls(
-            database_url=raw.get("database_url", DEFAULT_DATABASE_URL),
-            secret_key=raw.get("secret_key", ""),
-            server=ServerConfig(**raw.get("server", {})),
-            auth=AuthConfig(**raw.get("auth", {})),
-            # A missing section falls back to the defaults, so a configuration
-            # written by an older version keeps working.
-            vault=VaultConfig(**raw.get("vault", {})),
-        )
-
-    # ---------------------------------------------------------------- writing
-
-    def save(self, path: Path | None = None) -> Path:
-        path = path or CONFIG_PATH
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(self.to_toml(), encoding="utf-8")
-        # The file holds the session secret. On Windows this is largely
-        # cosmetic, but the service runs on Linux where it is not.
-        try:
-            os.chmod(path, 0o600)
-        except OSError:
-            pass
-        return path
-
-    def to_toml(self) -> str:
-        lines = [
-            "# MMO Vault - configuration of the server variant.",
-            "# Written by `python mmo_vault.py setup`. Holds the session secret:",
-            "# keep it readable by the service account only.",
-            "",
-            _toml_pair("database_url", self.database_url),
-            _toml_pair("secret_key", self.secret_key),
-            "",
-            "[server]",
-        ]
-        lines += [_toml_pair(k, v) for k, v in asdict(self.server).items()]
-        lines += ["", "[auth]"]
-        lines += [_toml_pair(k, v) for k, v in asdict(self.auth).items()]
-        lines += ["", "[vault]"]
-        lines += [_toml_pair(k, v) for k, v in asdict(self.vault).items()]
-        return "\n".join(lines) + "\n"
-
-    # ---------------------------------------------------------------- helpers
-
-    def resolved_database_url(self) -> str:
-        """Turns a relative SQLite path into an absolute one.
-
-        Without this the database would land wherever the process happens to be
-        started from - a trap that only shows up in production, as an empty
-        vault list.
-        """
-        prefix = "sqlite:///"
-        if not self.database_url.startswith(prefix):
-            return self.database_url
-        raw = self.database_url[len(prefix):]
-        path = Path(raw)
-        if path.is_absolute():
-            return self.database_url
-        return prefix + str((PROJECT_ROOT / path).resolve())
+    def is_ready(self) -> bool:
+        return bool(self.origin) and bool(self.secret_key)
 
 
-class ConfigMissing(FileNotFoundError):
-    """Raised when the service is started before it was set up."""
+# ------------------------------------------------------------------ flattening
 
-    def __init__(self, path: Path):
-        super().__init__(str(path))
-        self.path = path
+
+def _flatten(obj, prefix: str = "") -> dict[str, str]:
+    out: dict[str, str] = {}
+    for f in fields(obj):
+        value = getattr(obj, f.name)
+        key = f"{prefix}{f.name}"
+        if is_dataclass(value):
+            out.update(_flatten(value, key + "."))
+        elif isinstance(value, bool):
+            out[key] = "true" if value else "false"
+        else:
+            out[key] = str(value)
+    return out
+
+
+def _assign(obj, key: str, raw: str) -> None:
+    """Sets one dotted key on the structure, converting to the field's type."""
+    head, _, rest = key.partition(".")
+    for f in fields(obj):
+        if f.name != head:
+            continue
+        current = getattr(obj, f.name)
+        if rest:
+            if is_dataclass(current):
+                _assign(current, rest, raw)
+            return
+        if f.type in ("bool", bool):
+            setattr(obj, f.name, raw.strip().lower() in ("1", "true", "yes", "on"))
+        elif f.type in ("int", int):
+            setattr(obj, f.name, int(raw))
+        else:
+            setattr(obj, f.name, raw)
+        return
+    # Unknown keys are ignored on purpose: a newer version may have written
+    # them, and an older one must not fall over that.
+
+
+def load(db: DbSession) -> Config:
+    config = Config()
+    for row in db.query(Setting):
+        _assign(config, row.key, row.value)
+    return config
+
+
+def save(db: DbSession, config: Config) -> None:
+    """Writes every field - including defaults.
+
+    Storing defaults too means the table shows the whole effective state, and a
+    later change of a default in the code does not silently alter a running
+    installation.
+    """
+    existing = {row.key: row for row in db.query(Setting)}
+    for key, value in _flatten(config).items():
+        if key in existing:
+            existing[key].value = value
+        else:
+            db.add(Setting(key=key, value=value))
+
+
+def ensure_secret_key(db: DbSession, config: Config) -> Config:
+    """Generates the state-signing key once and persists it."""
+    if not config.secret_key:
+        config.secret_key = secrets.token_urlsafe(48)
+        row = db.query(Setting).filter(Setting.key == "secret_key").one_or_none()
+        if row is None:
+            db.add(Setting(key="secret_key", value=config.secret_key))
+        else:
+            row.value = config.secret_key
+    return config
+
+
+class NotConfigured(RuntimeError):
+    """Raised when the service is started before `setup` ran."""
+
+    def __init__(self, missing: list[str]):
+        super().__init__(", ".join(missing))
+        self.missing = missing
 
     def __str__(self) -> str:
         return (
-            f"No configuration found at {self.path}.\n"
-            "Run `python mmo_vault.py setup` first."
+            "The service is not set up yet - missing: " + ", ".join(self.missing)
+            + ".\nRun `python mmo_vault.py setup` first."
         )
-
-
-def _toml_pair(key: str, value: object) -> str:
-    if isinstance(value, bool):
-        return f"{key} = {'true' if value else 'false'}"
-    if isinstance(value, int):
-        return f"{key} = {value}"
-    escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
-    return f'{key} = "{escaped}"'
-
-
-def new_secret_key() -> str:
-    return secrets.token_urlsafe(48)

@@ -13,9 +13,8 @@ import os
 import tempfile
 from pathlib import Path
 
-from .config import VAR_DIR
+from . import environment
 
-VAULTS_DIR = VAR_DIR / "vaults"
 CURRENT_NAME = "current.ndjson"
 HISTORY_NAME = "history"
 
@@ -29,7 +28,7 @@ class InvalidVault(ValueError):
 
 
 def vault_dir(vault_id: str) -> Path:
-    return VAULTS_DIR / vault_id
+    return environment.vaults_dir() / vault_id
 
 
 def current_path(vault_id: str) -> Path:

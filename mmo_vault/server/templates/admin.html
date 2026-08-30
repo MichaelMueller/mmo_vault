@@ -10,26 +10,69 @@
 
 <div id="message" class="msg"></div>
 
-<h2>Benutzer</h2>
+<h2>Identitätsanbieter</h2>
 <div class="card">
-  <table id="users"><thead><tr>
-    <th>Konto</th><th>Gruppen</th><th>Passkeys</th><th>Status</th><th></th>
+  <table id="providers"><thead><tr>
+    <th>Name</th><th>Art</th><th>Tenant / Issuer</th><th>Liste</th><th>Konten</th><th>Gruppen-Sync</th><th></th>
   </tr></thead><tbody></tbody></table>
-</div>
-
-<div class="card">
-  <div class="row">
-    <input id="newUserName" placeholder="Kontoname" style="flex:1 1 160px;">
-    <input id="newUserMail" placeholder="E-Mail" style="flex:1 1 160px;">
-    <input id="newUserGroups" placeholder="Gruppen, kommagetrennt" style="flex:1 1 160px;">
-    <label class="row" style="margin:0; gap:6px;">
-      <input type="checkbox" id="newUserAdmin" style="width:auto;"> Administrator
-    </label>
-    <button class="primary" id="btnAddUser">Anlegen</button>
+  <div class="row" style="margin-top:12px;">
+    <input id="pName" placeholder="Name, z. B. m365" style="flex:1 1 100px;">
+    <select id="pKind" style="flex:0 1 130px;">
+      <option value="microsoft">Microsoft 365</option>
+      <option value="google">Google</option>
+      <option value="generic">Generisch (OIDC)</option>
+    </select>
+    <input id="pTenant" placeholder="Tenant (Microsoft) / Issuer-URL (generisch)" style="flex:2 1 220px;">
+    <input id="pClientId" placeholder="Client-ID" style="flex:1 1 140px;">
+    <input id="pSecret" placeholder="Client-Secret" type="password" style="flex:1 1 140px;">
+    <label class="row" style="margin:0; gap:6px;"><input type="checkbox" id="pSync" style="width:auto;"> Gruppen spiegeln</label>
+    <button class="primary" id="btnAddProvider">Anlegen</button>
   </div>
   <p class="muted" style="margin:10px 0 0;">
-    Ein neues Konto bekommt ein Einmalpasswort. Damit lässt sich genau eines
-    tun: einen Passkey anlegen.
+    Das Secret wird nur geschrieben, nie wieder ausgegeben. Die Umleitung je Anbieter
+    steht in der Tabelle — sie muss beim Anbieter eingetragen sein.
+  </p>
+</div>
+
+<h2>Whitelist</h2>
+<div class="card">
+  <table id="allowlist"><thead><tr>
+    <th>Adresse</th><th>Anbieter</th><th>Rolle</th><th>Konto</th><th>Notiz</th><th></th>
+  </tr></thead><tbody></tbody></table>
+  <div class="row" style="margin-top:12px;">
+    <input id="aEmail" placeholder="E-Mail-Adresse" style="flex:2 1 200px;">
+    <select id="aProvider" style="flex:1 1 140px;"></select>
+    <input id="aNote" placeholder="Notiz" style="flex:1 1 140px;">
+    <label class="row" style="margin:0; gap:6px;"><input type="checkbox" id="aAdmin" style="width:auto;"> Administrator</label>
+    <button class="primary" id="btnAddAllow">Eintragen</button>
+  </div>
+  <p class="muted" style="margin:10px 0 0;">
+    Wer hier steht, darf sich anmelden; das Konto entsteht beim ersten Login. Die Rolle
+    wird bei jeder Anmeldung von hier übernommen.
+  </p>
+</div>
+
+<h2>Konten</h2>
+<div class="card">
+  <table id="users"><thead><tr>
+    <th>Name</th><th>Adresse</th><th>Anbieter</th><th>Gruppen</th><th>Status</th><th>Letzte Anmeldung</th><th></th>
+  </tr></thead><tbody></tbody></table>
+  <p class="muted" style="margin:10px 0 0;">Konten werden nicht hier angelegt, sondern über die Whitelist.</p>
+</div>
+
+<h2>Gruppen</h2>
+<div class="card">
+  <table id="groups"><thead><tr>
+    <th>Gruppe</th><th>Herkunft</th><th>Mitglieder</th><th>Letzter Sync</th><th></th>
+  </tr></thead><tbody></tbody></table>
+  <div class="row" style="margin-top:12px;">
+    <input id="newGroupName" placeholder="Name" style="flex:1 1 140px;">
+    <input id="newGroupDesc" placeholder="Beschreibung" style="flex:2 1 200px;">
+    <button class="primary" id="btnAddGroup">Anlegen</button>
+  </div>
+  <p class="muted" style="margin:10px 0 0;">
+    Lokale Gruppen pflegst du hier. Anbieter-Gruppen entstehen beim Login eines
+    Mitglieds und spiegeln, was der Anbieter zuletzt gesagt hat.
   </p>
 </div>
 
@@ -44,8 +87,8 @@
     <button class="primary" id="btnAddVault">Anlegen</button>
   </div>
   <p class="muted" style="margin:10px 0 0;">
-    Ein neuer Vault ist eine leere Hülle. Angelegt wird er im Browser des
-    ersten Benutzers, der ein Master-Passwort vergibt — der Server sieht es nie.
+    Ein neuer Vault ist eine leere Hülle. Angelegt wird er im Browser des ersten
+    Benutzers, der ein Master-Passwort vergibt — der Server sieht es nie.
   </p>
 </div>
 
@@ -64,34 +107,14 @@
   </p>
 </div>
 
-<h2>Gruppen</h2>
+<h2>Einstellungen</h2>
 <div class="card">
-  <table id="groups"><thead><tr>
-    <th>Gruppe</th><th>Beschreibung</th><th>Mitglieder</th><th>Provider</th><th></th>
-  </tr></thead><tbody></tbody></table>
+  <div class="row" id="settingsForm"></div>
   <div class="row" style="margin-top:12px;">
-    <input id="newGroupName" placeholder="Name" style="flex:1 1 140px;">
-    <input id="newGroupDesc" placeholder="Beschreibung" style="flex:2 1 200px;">
-    <button class="primary" id="btnAddGroup">Anlegen</button>
+    <button class="primary" id="btnSaveSettings">Speichern</button>
+    <span class="muted">Adresse, Sitzungsdauern und Vault-Grenzen wirken sofort; Host, Port,
+      Worker und Proxy-Header erst nach einem Neustart.</span>
   </div>
-</div>
-
-<h2>Identitätsanbieter</h2>
-<div class="card">
-  <table id="providers"><thead><tr>
-    <th>Name</th><th>Issuer</th><th>Client-ID</th><th>Aktiv</th><th></th>
-  </tr></thead><tbody></tbody></table>
-  <div class="row" style="margin-top:12px;">
-    <input id="pName" placeholder="Name, z. B. google" style="flex:1 1 120px;">
-    <input id="pIssuer" placeholder="https://accounts.google.com" style="flex:2 1 220px;">
-    <input id="pClientId" placeholder="Client-ID" style="flex:1 1 140px;">
-    <input id="pSecret" placeholder="Client-Secret" type="password" style="flex:1 1 140px;">
-    <button class="primary" id="btnAddProvider">Anlegen</button>
-  </div>
-  <p class="muted" style="margin:10px 0 0;">
-    Das Secret wird nur geschrieben, nie wieder ausgegeben. Die Umleitung
-    lautet <code>{{ origin }}/auth/oidc/&lt;name&gt;/callback</code>.
-  </p>
 </div>
 {% endblock %}
 
@@ -132,19 +155,147 @@ function formatBytes(bytes){
   return value.toFixed(unit ? 1 : 0) + ' ' + units[unit];
 }
 
+function when(iso){
+  return iso ? new Date(iso + 'Z').toLocaleString() : '—';
+}
+
+const SETTINGS = [
+  ['origin', 'Öffentliche Adresse', 'text'],
+  ['session_hours', 'Sitzung (Stunden)', 'number'],
+  ['session_idle_minutes', 'Leerlauf (Minuten)', 'number'],
+  ['max_size_bytes', 'Vault-Limit (Bytes)', 'number'],
+  ['lock_ttl_seconds', 'Sperre (Sekunden)', 'number'],
+  ['history_warn_bytes', 'Historie-Warnung (Bytes)', 'number'],
+  ['host', 'Host', 'text'],
+  ['port', 'Port', 'number'],
+  ['workers', 'Worker', 'number'],
+  ['forwarded_allow_ips', 'Proxy-Adressen', 'text'],
+  ['proxy_headers', 'Hinter Reverse Proxy', 'checkbox'],
+];
+
 async function loadAll(){
-  const [users, groups, providerList, vaultList] = await Promise.all([
-    api('/api/users'), api('/api/groups'), api('/api/providers'), api('/api/vaults')
+  const [providerList, allow, users, groups, vaultList, settings] = await Promise.all([
+    api('/api/providers'), api('/api/allowlist'), api('/api/users'),
+    api('/api/groups'), api('/api/vaults'), api('/api/settings')
   ]);
   providers = providerList;
 
+  // ---- providers -------------------------------------------------------
+  const providerBody = document.querySelector('#providers tbody');
+  providerBody.innerHTML = '';
+  providers.forEach(provider => {
+    const row = document.createElement('tr');
+    cell(row, provider.name + (provider.is_primary ? '  (primär)' : ''));
+    cell(row, provider.kind);
+    const where = cell(row, provider.kind === 'microsoft' ? (provider.tenant || '—') : provider.issuer);
+    where.title = 'Umleitung: ' + provider.redirect_uri;
+    cell(row, String(provider.allowlisted));
+    cell(row, String(provider.accounts));
+    cell(row, provider.sync_groups ? 'an' : 'aus');
+    actionCell(row, [
+      ['Umleitung kopieren', () => navigator.clipboard.writeText(provider.redirect_uri)
+        .then(() => show('message', provider.redirect_uri, 'ok'))],
+      [provider.sync_groups ? 'Sync aus' : 'Sync an', () => guard(() =>
+        api('/api/providers/' + provider.id, { method:'PATCH',
+            body: JSON.stringify({ sync_groups: !provider.sync_groups }) }))],
+      ...(provider.is_primary ? [] : [['Primär', () => guard(() =>
+        api('/api/providers/' + provider.id, { method:'PATCH', body: JSON.stringify({ is_primary: true }) }))]]),
+      [provider.enabled ? 'Abschalten' : 'Einschalten', () => guard(() =>
+        api('/api/providers/' + provider.id, { method:'PATCH',
+            body: JSON.stringify({ enabled: !provider.enabled }) }))],
+      ['Löschen', () => guard(() => api('/api/providers/' + provider.id, { method:'DELETE' })), true]
+    ]);
+    providerBody.appendChild(row);
+  });
+  const select = document.getElementById('aProvider');
+  select.innerHTML = '';
+  providers.forEach(p => {
+    const option = document.createElement('option');
+    option.value = p.id; option.textContent = p.name;
+    if(p.is_primary) option.selected = true;
+    select.appendChild(option);
+  });
+
+  // ---- allowlist -------------------------------------------------------
+  const allowBody = document.querySelector('#allowlist tbody');
+  allowBody.innerHTML = '';
+  allow.forEach(entry => {
+    const row = document.createElement('tr');
+    cell(row, entry.email);
+    cell(row, (providers.find(p => p.id === entry.provider_id) || {}).name || '?');
+    cell(row, entry.is_admin ? 'Administrator' : 'Benutzer');
+    cell(row, entry.account_id ? 'angemeldet ' + when(entry.last_login_at) : 'noch nie angemeldet');
+    cell(row, entry.note || '');
+    actionCell(row, [
+      [entry.is_admin ? 'Zum Benutzer' : 'Zum Admin', () => guard(() =>
+        api('/api/allowlist/' + entry.id, { method:'PATCH',
+            body: JSON.stringify({ is_admin: !entry.is_admin }) }))],
+      ['Entfernen', () => { if(confirm(entry.email + ' von der Liste nehmen? Ein vorhandenes Konto wird gesperrt.'))
+        guard(() => api('/api/allowlist/' + entry.id, { method:'DELETE' })); }, true]
+    ]);
+    allowBody.appendChild(row);
+  });
+
+  // ---- accounts --------------------------------------------------------
+  const userBody = document.querySelector('#users tbody');
+  userBody.innerHTML = '';
+  users.forEach(user => {
+    const row = document.createElement('tr');
+    cell(row, user.name + (user.is_admin ? '  (Admin)' : ''));
+    cell(row, user.email);
+    cell(row, user.provider);
+    cell(row, user.groups.join(', ') || '—');
+    cell(row, user.is_active ? 'aktiv' : 'gesperrt');
+    cell(row, when(user.last_login_at));
+    actionCell(row, [
+      ['Gruppen', () => {
+        const local = groups.filter(g => g.source === 'local').map(g => g.name);
+        const value = prompt('Lokale Gruppen, kommagetrennt. Verfügbar: ' + (local.join(', ') || '—'),
+          user.groups.filter(n => local.includes(n)).join(', '));
+        if(value === null) return;
+        guard(() => api('/api/users/' + user.id, { method:'PATCH', body: JSON.stringify({
+          groups: value.split(',').map(s => s.trim()).filter(Boolean) })}));
+      }],
+      ['Sitzungen beenden', () => guard(() =>
+        api('/api/users/' + user.id + '/revoke-sessions', { method:'POST' }))],
+      [user.is_active ? 'Sperren' : 'Freigeben', () => guard(() =>
+        api('/api/users/' + user.id, { method:'PATCH', body: JSON.stringify({ is_active: !user.is_active }) }))],
+      ['Löschen', () => { if(confirm('Konto ' + user.name + ' löschen?'))
+        guard(() => api('/api/users/' + user.id, { method:'DELETE' })); }, true]
+    ]);
+    userBody.appendChild(row);
+  });
+
+  // ---- groups ----------------------------------------------------------
+  const groupBody = document.querySelector('#groups tbody');
+  groupBody.innerHTML = '';
+  groups.forEach(group => {
+    const row = document.createElement('tr');
+    cell(row, group.name).title = group.description || '';
+    cell(row, group.source === 'local' ? 'lokal' : 'Anbieter ' + (group.provider || '?'));
+    cell(row, group.members.join(', ') || '—');
+    cell(row, group.source === 'local' ? '—' : when(group.last_synced_at));
+    const actions = [];
+    if(group.source === 'local'){
+      actions.push(['Mitglieder', () => {
+        const value = prompt('Mitglieder (Kontonamen), kommagetrennt:', group.members.join(', '));
+        if(value === null) return;
+        guard(() => api('/api/groups/' + group.id, { method:'PATCH', body: JSON.stringify({
+          members: value.split(',').map(s => s.trim()).filter(Boolean) })}));
+      }]);
+    }
+    actions.push(['Löschen', () => { if(confirm('Gruppe ' + group.name + ' löschen?'))
+      guard(() => api('/api/groups/' + group.id, { method:'DELETE' })); }, true]);
+    actionCell(row, actions);
+    groupBody.appendChild(row);
+  });
+
+  // ---- vaults ----------------------------------------------------------
   const vaultBody = document.querySelector('#vaults tbody');
   vaultBody.innerHTML = '';
   for(const vault of vaultList){
     const row = document.createElement('tr');
     cell(row, vault.name).title = vault.description || '';
-    // Freigaben stehen an einem eigenen Endpunkt: die Liste selbst verraet nur,
-    // was der Anfragende darf.
     const access = await api('/api/vaults/' + vault.id + '/access');
     cell(row, access.length
       ? access.map(a => (a.subject_type === 'group' ? '#' : '') + a.subject
@@ -154,8 +305,7 @@ async function loadAll(){
             : vault.empty ? 'leer' : 'belegt');
     cell(row, formatBytes(vault.size_bytes));
     const historyCell = cell(row, vault.generations
-      ? vault.generations + ' × ' + formatBytes(vault.history_bytes)
-      : '—');
+      ? vault.generations + ' × ' + formatBytes(vault.history_bytes) : '—');
     if(vault.generations){
       const link = document.createElement('button');
       link.textContent = 'ansehen';
@@ -193,101 +343,38 @@ async function loadAll(){
     vaultBody.appendChild(row);
   }
 
-  const userBody = document.querySelector('#users tbody');
-  userBody.innerHTML = '';
-  users.forEach(user => {
-    const row = document.createElement('tr');
-    cell(row, user.name + (user.is_admin ? '  (Admin)' : '')).title = user.email || '';
-    cell(row, user.groups.join(', ') || '—');
-    cell(row, user.credentials.length
-      ? user.credentials.map(c => c.label || 'ohne Namen').join(', ')
-      : '—');
-    cell(row, !user.is_active ? 'gesperrt'
-            : user.must_enroll_passkey ? 'wartet auf Passkey'
-            : 'aktiv');
-    actionCell(row, [
-      ['Neu einladen', () => guard(async () => {
-        const result = await api('/api/users/' + user.id + '/enroll', { method:'POST' });
-        // Shown once, and only here: it is not stored in plain text anywhere.
-        show('message', 'Einmalpasswort für ' + user.name + ': ' + result.one_time_password, 'ok');
-      })],
-      [user.is_active ? 'Sperren' : 'Freigeben', () => guard(() =>
-        api('/api/users/' + user.id, { method:'PATCH',
-            body: JSON.stringify({ is_active: !user.is_active }) }))],
-      ['Löschen', () => { if(confirm('Konto ' + user.name + ' löschen?'))
-        guard(() => api('/api/users/' + user.id, { method:'DELETE' })); }, true]
-    ]);
-    userBody.appendChild(row);
-  });
-
-  const groupBody = document.querySelector('#groups tbody');
-  groupBody.innerHTML = '';
-  groups.forEach(group => {
-    const row = document.createElement('tr');
-    cell(row, group.name);
-    cell(row, group.description || '—');
-    cell(row, String(group.members));
-    cell(row, (providers.find(p => p.id === group.provider_id) || {}).name || '—');
-    actionCell(row, [['Löschen', () => { if(confirm('Gruppe ' + group.name + ' löschen?'))
-      guard(() => api('/api/groups/' + group.id, { method:'DELETE' })); }, true]]);
-    groupBody.appendChild(row);
-  });
-
-  const providerBody = document.querySelector('#providers tbody');
-  providerBody.innerHTML = '';
-  providers.forEach(provider => {
-    const row = document.createElement('tr');
-    cell(row, provider.name);
-    cell(row, provider.issuer);
-    cell(row, provider.client_id);
-    cell(row, provider.enabled ? 'ja' : 'nein');
-    actionCell(row, [
-      [provider.enabled ? 'Abschalten' : 'Einschalten', () => guard(() =>
-        api('/api/providers/' + provider.id, { method:'PATCH',
-            body: JSON.stringify({ enabled: !provider.enabled }) }))],
-      ['Löschen', () => guard(() =>
-        api('/api/providers/' + provider.id, { method:'DELETE' })), true]
-    ]);
-    providerBody.appendChild(row);
+  // ---- settings --------------------------------------------------------
+  const form = document.getElementById('settingsForm');
+  form.innerHTML = '';
+  SETTINGS.forEach(([key, label, type]) => {
+    const wrap = document.createElement('label');
+    wrap.style.cssText = 'flex:1 1 200px; margin:0;';
+    wrap.textContent = label;
+    const input = document.createElement('input');
+    input.type = type; input.dataset.key = key;
+    if(type === 'checkbox'){ input.checked = !!settings[key]; input.style.width = 'auto'; }
+    else input.value = settings[key];
+    wrap.appendChild(input);
+    form.appendChild(wrap);
   });
 }
 
-document.getElementById('btnAddUser').onclick = () => guard(async () => {
-  const groups = document.getElementById('newUserGroups').value
-    .split(',').map(s => s.trim()).filter(Boolean);
-  const created = await api('/api/users', { method:'POST', body: JSON.stringify({
-    name: document.getElementById('newUserName').value.trim(),
-    email: document.getElementById('newUserMail').value.trim(),
-    is_admin: document.getElementById('newUserAdmin').checked,
-    groups
-  })});
-  show('message', 'Einmalpasswort für ' + created.name + ': ' + created.one_time_password
-       + '  (nur jetzt sichtbar)', 'ok');
-  ['newUserName','newUserMail','newUserGroups'].forEach(id =>
-    document.getElementById(id).value = '');
-  document.getElementById('newUserAdmin').checked = false;
-});
-
-// Die Historie steht in einem eigenen Bereich unter der Tabelle: sie ist
-// selten gebraucht und wuerde die Uebersicht sonst sprengen.
 async function showHistory(vault){
   const panel = document.getElementById('historyPanel');
   panel.style.display = 'block';
   document.getElementById('historyTitle').textContent = 'Historie: ' + vault.name;
   const body = document.querySelector('#history tbody');
   body.innerHTML = '';
-
   const data = await api('/api/vaults/' + vault.id + '/history');
   document.getElementById('historySummary').textContent =
     data.generations.length + ' Generation(en), zusammen ' + formatBytes(data.total_bytes)
     + (data.warn ? ' — mehr als ' + formatBytes(data.warn_bytes)
                    + '. Nichts verfaellt von selbst; aufgeraeumt wird hier.' : '');
   document.getElementById('historySummary').className = data.warn ? 'msg show error' : 'muted';
-
   data.generations.forEach(generation => {
     const row = document.createElement('tr');
     cell(row, '#' + generation.seq);
-    cell(row, new Date(generation.created_at + 'Z').toLocaleString());
+    cell(row, when(generation.created_at));
     cell(row, generation.author || '—');
     cell(row, formatBytes(generation.size_bytes));
     cell(row, generation.note || '');
@@ -296,8 +383,6 @@ async function showHistory(vault){
         location.href = '/api/vaults/' + vault.id + '/history/' + generation.seq + '/content';
       }],
       ['Wiederherstellen', () => guard(async () => {
-        // Braucht die Sperre: der ETag kann diesen Fall nicht abfangen, weil
-        // der Inhalt ja gerade ersetzt werden soll.
         const lock = await api('/api/vaults/' + vault.id + '/lock', { method:'POST' });
         try{
           await api('/api/vaults/' + vault.id + '/history/' + generation.seq + '/restore',
@@ -320,13 +405,32 @@ document.getElementById('btnCloseHistory').onclick = () => {
   document.getElementById('historyPanel').style.display = 'none';
 };
 
-document.getElementById('btnAddVault').onclick = () => guard(async () => {
-  await api('/api/vaults', { method:'POST', body: JSON.stringify({
-    name: document.getElementById('newVaultName').value.trim(),
-    description: document.getElementById('newVaultDesc').value.trim()
+document.getElementById('btnAddProvider').onclick = () => guard(async () => {
+  const kind = document.getElementById('pKind').value;
+  const where = document.getElementById('pTenant').value.trim();
+  await api('/api/providers', { method:'POST', body: JSON.stringify({
+    name: document.getElementById('pName').value.trim(),
+    kind,
+    tenant: kind === 'microsoft' ? where : null,
+    issuer: kind === 'generic' ? where : '',
+    client_id: document.getElementById('pClientId').value.trim(),
+    client_secret: document.getElementById('pSecret').value,
+    sync_groups: document.getElementById('pSync').checked
   })});
-  document.getElementById('newVaultName').value = '';
-  document.getElementById('newVaultDesc').value = '';
+  ['pName','pTenant','pClientId','pSecret'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('pSync').checked = false;
+});
+
+document.getElementById('btnAddAllow').onclick = () => guard(async () => {
+  await api('/api/allowlist', { method:'POST', body: JSON.stringify({
+    provider_id: Number(document.getElementById('aProvider').value),
+    email: document.getElementById('aEmail').value.trim(),
+    is_admin: document.getElementById('aAdmin').checked,
+    note: document.getElementById('aNote').value.trim()
+  })});
+  document.getElementById('aEmail').value = '';
+  document.getElementById('aNote').value = '';
+  document.getElementById('aAdmin').checked = false;
 });
 
 document.getElementById('btnAddGroup').onclick = () => guard(async () => {
@@ -338,15 +442,24 @@ document.getElementById('btnAddGroup').onclick = () => guard(async () => {
   document.getElementById('newGroupDesc').value = '';
 });
 
-document.getElementById('btnAddProvider').onclick = () => guard(async () => {
-  await api('/api/providers', { method:'POST', body: JSON.stringify({
-    name: document.getElementById('pName').value.trim(),
-    issuer: document.getElementById('pIssuer').value.trim(),
-    client_id: document.getElementById('pClientId').value.trim(),
-    client_secret: document.getElementById('pSecret').value
+document.getElementById('btnAddVault').onclick = () => guard(async () => {
+  await api('/api/vaults', { method:'POST', body: JSON.stringify({
+    name: document.getElementById('newVaultName').value.trim(),
+    description: document.getElementById('newVaultDesc').value.trim()
   })});
-  ['pName','pIssuer','pClientId','pSecret'].forEach(id =>
-    document.getElementById(id).value = '');
+  document.getElementById('newVaultName').value = '';
+  document.getElementById('newVaultDesc').value = '';
+});
+
+document.getElementById('btnSaveSettings').onclick = () => guard(async () => {
+  const payload = {};
+  document.querySelectorAll('#settingsForm input').forEach(input => {
+    const key = input.dataset.key;
+    payload[key] = input.type === 'checkbox' ? input.checked
+                 : input.type === 'number' ? Number(input.value) : input.value.trim();
+  });
+  await api('/api/settings', { method:'PUT', body: JSON.stringify(payload) });
+  show('message', 'Einstellungen gespeichert.', 'ok');
 });
 
 document.getElementById('logout').onclick = async (event) => {

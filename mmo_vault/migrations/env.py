@@ -9,22 +9,19 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from mmo_vault.server.config import Config, ConfigMissing
+from mmo_vault.server import environment
 from mmo_vault.server.models import Base
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# A URL set by the caller wins: mmo_vault.py setup --config may point at a
-# different database than var/config.toml names.
+# A URL set by the caller wins; otherwise the environment decides. There is no
+# configuration file to consult any more - where the database is comes from
+# MMO_VAULT_DATABASE_URL (or the data directory), nothing else.
 url = config.get_main_option("sqlalchemy.url", None)
 if not url:
-    try:
-        url = Config.load().resolved_database_url()
-    except ConfigMissing:
-        # Allows `alembic revision --autogenerate` before the first setup.
-        url = "sqlite:///var/mmo_vault.db"
+    url = environment.database_url()
     config.set_main_option("sqlalchemy.url", url)
 
 target_metadata = Base.metadata

@@ -1,10 +1,9 @@
 """Engine and session factory.
 
-Deliberately synchronous SQLAlchemy, although the plan mentioned async: the CLI
-and the request handlers would otherwise need two code paths for the same
-queries. FastAPI runs synchronous endpoints in a worker thread, which is more
-than enough for a service of this size, and it keeps the model layer free of
-await noise.
+Deliberately synchronous SQLAlchemy: the CLI and the request handlers would
+otherwise need two code paths for the same queries. FastAPI runs synchronous
+endpoints in a worker thread, which is more than enough for a service of this
+size, and it keeps the model layer free of await noise.
 """
 
 from __future__ import annotations
@@ -16,19 +15,18 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from .config import Config
+from . import environment
 from .models import Base
 
 _engine: Engine | None = None
 _SessionFactory: sessionmaker[Session] | None = None
 
 
-def create_db_engine(config: Config) -> Engine:
-    url = config.resolved_database_url()
+def create_db_engine(url: str) -> Engine:
     kwargs: dict = {"future": True}
     if url.startswith("sqlite"):
-        # check_same_thread: FastAPI hands requests to worker threads, and the
-        # connection would otherwise refuse to be used there.
+        # FastAPI hands requests to worker threads, and the connection would
+        # otherwise refuse to be used there.
         kwargs["connect_args"] = {"check_same_thread": False}
     engine = create_engine(url, **kwargs)
     if url.startswith("sqlite"):
@@ -47,27 +45,26 @@ def _enable_sqlite_pragmas(engine: Engine) -> None:
         cursor.close()
 
 
-def init(config: Config) -> Engine:
+def init(url: str | None = None) -> Engine:
     """Binds the process to one database. Called by both the CLI and the app."""
     global _engine, _SessionFactory
-    _engine = create_db_engine(config)
+    _engine = create_db_engine(url or environment.database_url())
     _SessionFactory = sessionmaker(bind=_engine, expire_on_commit=False, future=True)
     return _engine
 
 
 def engine() -> Engine:
     if _engine is None:
-        raise RuntimeError("database not initialised - call db.init(config) first")
+        raise RuntimeError("database not initialised - call db.init() first")
     return _engine
 
 
-def create_all(config: Config) -> Engine:
-    """Creates the schema without Alembic.
+def create_all(url: str | None = None) -> Engine:
+    """Creates the schema without Alembic - for tests and tooling only.
 
-    Used by the tests and as the fallback when no migration has run yet; the
-    regular path is `alembic upgrade head`.
+    The regular path is `alembic upgrade head`, which also stamps the version.
     """
-    eng = init(config)
+    eng = init(url)
     Base.metadata.create_all(eng)
     return eng
 
@@ -76,7 +73,7 @@ def create_all(config: Config) -> Engine:
 def session_scope() -> Iterator[Session]:
     """Transaction around a unit of work, committed or rolled back as a whole."""
     if _SessionFactory is None:
-        raise RuntimeError("database not initialised - call db.init(config) first")
+        raise RuntimeError("database not initialised - call db.init() first")
     session = _SessionFactory()
     try:
         yield session

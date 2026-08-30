@@ -1,9 +1,4 @@
-"""The FastAPI application.
-
-Phase 1 only carries what `start` needs to prove itself: a health endpoint and
-the wiring of configuration and database. Authentication, vaults and the
-injection of the single-file application follow in the later phases.
-"""
+"""The FastAPI application."""
 
 from __future__ import annotations
 
@@ -13,34 +8,61 @@ from fastapi import Depends, FastAPI
 from sqlalchemy.orm import Session as DbSession
 from starlette.middleware.sessions import SessionMiddleware
 
+from . import config as settings
 from . import db, deps
-from .config import Config
+from .config import Config, NotConfigured
 from .models import Provider, User
 from .routers import admin_api, auth, oidc, pages, vault_api
 
-APP_VERSION = "2.0.0-dev"
+APP_VERSION = "2.1.0"
 
 
-def create_app(config: Config | None = None) -> FastAPI:
-    config = config or Config.load()
+def readiness_problems(db_session: DbSession) -> list[str]:
+    """What is missing before the service can let anyone in.
+
+    Checked at start-up, so the answer is a sentence on the console rather than
+    a sign-in page without a single button on it.
+    """
+    config = settings.load(db_session)
+    problems = []
+    if not config.origin:
+        problems.append("origin")
+    if not db_session.query(Provider).filter(Provider.enabled.is_(True)).count():
+        problems.append("an enabled provider")
+    from .models import Allowlist  # local import keeps the module graph simple
+
+    if not db_session.query(Allowlist).filter(Allowlist.is_admin.is_(True)).count():
+        problems.append("an administrator on the allowlist")
+    return problems
+
+
+def create_app(database_url: str | None = None) -> FastAPI:
+    engine = db.init(database_url)
+
+    # The state-signing key has to exist before the middleware is built, and the
+    # middleware is built once. Everything else is read per request.
+    with db.session_scope() as session:
+        config = settings.ensure_secret_key(session, settings.load(session))
+        problems = readiness_problems(session)
+    if problems:
+        raise NotConfigured(problems)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        db.init(config)
         yield
+        engine.dispose()
 
     app = FastAPI(
         title="MMO Vault",
         version=APP_VERSION,
         lifespan=lifespan,
-        # No interactive docs by default: this is a service for a handful of
-        # people, not a public API, and the schema would only be one more thing
-        # reachable without authentication.
+        # No interactive docs: this is a service for a handful of people, not a
+        # public API, and the schema would be one more thing reachable without
+        # a session.
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
     )
-    app.state.config = config
 
     # Authlib keeps the OAuth state between redirect and callback in a signed
     # cookie. Nothing else uses it - the service's own sessions live in the
@@ -50,7 +72,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         secret_key=config.secret_key,
         session_cookie="mmo_vault_oauth",
         same_site="lax",
-        https_only=config.auth.origin.startswith("https://"),
+        https_only=config.origin.startswith("https://"),
         max_age=600,
     )
 
@@ -65,31 +87,29 @@ def create_app(config: Config | None = None) -> FastAPI:
         return {"status": "ok", "version": APP_VERSION}
 
     @app.get("/api/config")
-    def public_config(db: DbSession = Depends(deps.get_db)) -> dict:
+    def public_config(db_session: DbSession = Depends(deps.get_db)) -> dict:
         """What the sign-in page needs before anyone is signed in.
 
-        Lists the enabled providers, because the page has to offer them - but
-        says nothing about accounts. Which provider a particular account may
-        use is decided after the provider has spoken, not before.
+        Lists the enabled providers, primary first, because the page has to
+        offer them - and says nothing about accounts.
         """
-        providers = db.query(Provider).filter(Provider.enabled.is_(True)).order_by(Provider.name)
+        rows = (
+            db_session.query(Provider)
+            .filter(Provider.enabled.is_(True))
+            .order_by(Provider.is_primary.desc(), Provider.name)
+        )
         return {
             "server": True,
-            "rp_id": config.auth.rp_id,
-            "providers": [{"name": p.name} for p in providers],
+            "providers": [{"name": p.name, "kind": p.kind, "primary": p.is_primary} for p in rows],
         }
 
     @app.get("/api/me")
-    def me(user: User = Depends(deps.require_full_user)) -> dict:
+    def me(user: User = Depends(deps.require_user)) -> dict:
         return {
             "user": user.name,
             "email": user.email,
             "is_admin": user.is_admin,
             "groups": [group.name for group in user.groups],
-            "credentials": [
-                {"label": c.label, "backup_eligible": c.backup_eligible}
-                for c in user.credentials
-            ],
         }
 
     return app

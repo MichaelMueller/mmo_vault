@@ -1,11 +1,11 @@
 """Database schema of the server variant.
 
 Plain SQLAlchemy 2.0 ORM, no SQLite specifics anywhere: the connection string
-decides the engine, so PostgreSQL works by changing one line in the config.
+decides the engine, so PostgreSQL works by changing one environment variable.
 
-The schema already contains the tables of the later phases (vaults, locks,
-generations, providers). They cost nothing while unused and spare a migration
-that would otherwise have to rewrite half the model.
+Identity is not managed here. It comes from an OIDC provider; the tables below
+only record who was let in (allowlist), who has shown up (user), and what they
+may do (group, vault_access).
 """
 
 from __future__ import annotations
@@ -18,7 +18,6 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
-    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -42,30 +41,75 @@ class Base(DeclarativeBase):
     pass
 
 
+class Setting(Base):
+    """Every setting except where the database is. See config.py."""
+
+    __tablename__ = "setting"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
+
+
 class Provider(Base):
-    """An OIDC identity provider, configurable per user and per group."""
+    """An OIDC identity provider. `kind` decides issuer template, claim rules
+    and - if enabled - how groups are fetched."""
 
     __tablename__ = "provider"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(64), unique=True)
+    kind: Mapped[str] = mapped_column(String(16), default="generic")  # microsoft | google | generic
     issuer: Mapped[str] = mapped_column(String(255))
     client_id: Mapped[str] = mapped_column(String(255))
     client_secret: Mapped[str] = mapped_column(String(255))
     scopes: Mapped[str] = mapped_column(String(255), default="openid email profile")
+    tenant: Mapped[Optional[str]] = mapped_column(String(128))  # microsoft only
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    sync_groups: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
 
-class Group(Base):
-    __tablename__ = "group"
-    # Same reasoning as on User: group ids must never come back either.
-    __table_args__ = {"sqlite_autoincrement": True}
+class Allowlist(Base):
+    """Who may sign in through which provider, and whether as administrator.
+
+    Consulted on every sign-in, not only the first: the admin flag is taken from
+    here each time, and an address removed from the list is refused next time.
+    """
+
+    __tablename__ = "allowlist"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(64), unique=True)
+    provider_id: Mapped[int] = mapped_column(ForeignKey("provider.id"))
+    email: Mapped[str] = mapped_column(String(255))  # normalised to lower case
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    note: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("user.id"))
+
+    __table_args__ = (UniqueConstraint("provider_id", "email", name="uq_allowlist_provider_email"),)
+
+
+class Group(Base):
+    """Locally managed, or a mirror of a provider group filled in by sync."""
+
+    __tablename__ = "group"
+    # SQLite reuses rowids after a delete. vault_access references groups by
+    # bare integer, so a reused id would hand a new group the shares of a
+    # deleted one. The delete endpoint cleans those up; this makes reuse
+    # impossible on top.
+    __table_args__ = (
+        UniqueConstraint("provider_id", "external_id", name="uq_group_external"),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(128))
     description: Mapped[str] = mapped_column(String(255), default="")
+    source: Mapped[str] = mapped_column(String(16), default="local")  # local | provider
     provider_id: Mapped[Optional[int]] = mapped_column(ForeignKey("provider.id"))
+    external_id: Mapped[Optional[str]] = mapped_column(String(255))
+    last_synced_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
     members: Mapped[list["User"]] = relationship(
@@ -81,76 +125,30 @@ class UserGroup(Base):
 
 
 class User(Base):
+    """An account that has signed in at least once. Created by the first
+    successful sign-in of an allowlisted address - never by hand."""
+
     __tablename__ = "user"
+    __table_args__ = (
+        UniqueConstraint("provider_id", "provider_subject", name="uq_user_provider_subject"),
+        # Same reasoning as on Group: ids must never come back.
+        {"sqlite_autoincrement": True},
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(128))
     email: Mapped[str] = mapped_column(String(255), default="")
-    # Only set while an account still has to register a passkey, and discarded
-    # for good afterwards - a password must not survive as a permanent way in.
-    password_hash: Mapped[Optional[str]] = mapped_column(String(255))
-    must_enroll_passkey: Mapped[bool] = mapped_column(Boolean, default=True)
-    enroll_expires_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime)
+    # The identity is this pair, never the mail address.
+    provider_id: Mapped[int] = mapped_column(ForeignKey("provider.id"))
+    provider_subject: Mapped[str] = mapped_column(String(255))
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    # Identity at an OIDC provider. The pair (provider, subject) is the identity,
-    # never the mail address.
-    provider_id: Mapped[Optional[int]] = mapped_column(ForeignKey("provider.id"))
-    provider_subject: Mapped[Optional[str]] = mapped_column(String(255))
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     last_login_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime)
-    # Rate limiting lives on the account, not in memory: a restart must not
-    # hand an attacker a fresh budget.
-    failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
-    locked_until: Mapped[Optional[dt.datetime]] = mapped_column(DateTime)
 
     groups: Mapped[list[Group]] = relationship(
         secondary="user_group", back_populates="members"
     )
-    credentials: Mapped[list["Credential"]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
-    )
-
-    __table_args__ = (
-        UniqueConstraint("provider_id", "provider_subject", name="uq_user_provider_subject"),
-        # SQLite reuses rowids after a delete. vault_access references accounts
-        # by bare integer (it has to - user OR group), so a reused id would hand
-        # a brand-new account the shares of a deleted one. The delete endpoint
-        # cleans those rows up; this makes the id reuse impossible on top.
-        {"sqlite_autoincrement": True},
-    )
-
-
-class Credential(Base):
-    """A registered passkey. Nothing in here is secret."""
-
-    __tablename__ = "credential"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"))
-    credential_id: Mapped[bytes] = mapped_column(LargeBinary, unique=True)
-    public_key: Mapped[bytes] = mapped_column(LargeBinary)
-    sign_count: Mapped[int] = mapped_column(Integer, default=0)
-    label: Mapped[str] = mapped_column(String(64), default="")
-    # Whether the credential is syncable ("backup eligible"). Used to warn a
-    # user whose only passkey would not survive losing the device.
-    backup_eligible: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
-    last_used_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime)
-
-    user: Mapped[User] = relationship(back_populates="credentials")
-
-
-class BackupCode(Base):
-    """One-time recovery codes, handed out when a passkey is registered."""
-
-    __tablename__ = "backup_code"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"))
-    code_hash: Mapped[str] = mapped_column(String(255))
-    used_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime)
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Session(Base):
@@ -163,33 +161,8 @@ class Session(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     last_seen_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime)
-    # A session created with a password while must_enroll_passkey is set may do
-    # nothing but register a passkey.
-    enrollment_only: Mapped[bool] = mapped_column(Boolean, default=False)
-    # How the session came to be. True for passkey and OIDC, False for a mere
-    # password. Adding a further passkey to a working account requires a strong
-    # AND recent session - a stolen cookie must not be enough to settle in.
-    strong_auth: Mapped[bool] = mapped_column(Boolean, default=False)
     ip: Mapped[str] = mapped_column(String(64), default="")
     user_agent: Mapped[str] = mapped_column(String(255), default="")
-
-
-class WebAuthnChallenge(Base):
-    """A challenge handed out and waiting to come back.
-
-    Kept in the database rather than in memory: with more than one worker an
-    in-process dictionary would send every second attempt to a process that has
-    never seen the challenge.
-    """
-
-    __tablename__ = "webauthn_challenge"
-
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    challenge: Mapped[bytes] = mapped_column(LargeBinary)
-    purpose: Mapped[str] = mapped_column(String(16))  # 'register' | 'authenticate'
-    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("user.id"))
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
-    expires_at: Mapped[dt.datetime] = mapped_column(DateTime)
 
 
 class Vault(Base):

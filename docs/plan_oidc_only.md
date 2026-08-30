@@ -1,7 +1,7 @@
-# MMO Vault 3.0 — Umsetzungsplan: Identität kommt vom Provider
+# MMO Vault 2.1 — Umsetzungsplan: Identität kommt vom Provider
 
 **Stand:** 2026-08-30
-**Zielversion:** 3.0.0
+**Zielversion:** 2.1.0
 **Status:** Planung, noch nicht umgesetzt
 **Löst ab:** die Kapitel 4, 5 und 9 von [plan_server.md](plan_server.md). Alles zu
 Vaults, Sperre, ETag, Historie und Injektion (Kapitel 2, 3, 6, 7, 10) bleibt gültig.
@@ -328,7 +328,7 @@ Abnahmen stehen aus. Trotzdem eine ordentliche Migration, keine neue Datenbank:
 | 4 | Gruppen-Sync Microsoft (Graph), dann Google (Cloud Identity); Provider-Gruppen in UI | Login legt Gruppen an und ersetzt Mitgliedschaften; Fehlschlag sperrt nicht aus; Abschalten friert ein |
 | 5 | `export-vault`, Migration mit Bestandsübernahme, README, requirements.md, Bedrohungsmodell | Migration gegen eine 2.0.0-Datenbank; Export liefert die Datei, die der Browser öffnet |
 
-Version **3.0.0** — anderes Betriebsmodell, keine Kompatibilität der Anmeldung.
+Version **2.1.0**. Das Betriebsmodell der Anmeldung ändert sich; Dateiformat, Client und Vault-API bleiben kompatibel.
 
 ---
 

@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .config import PROJECT_ROOT
+from .environment import PROJECT_ROOT
 
 APP_PATH = PROJECT_ROOT / "mmo_vault" / "public_html" / "mmo_vault.html"
 ADAPTER_PATH = Path(__file__).resolve().parent / "static" / "server.js"

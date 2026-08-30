@@ -1,32 +1,31 @@
-"""Command line of the server variant: setup, start, enroll.
+"""Command line of the server variant: setup, start, export-vault.
 
-`setup` is deliberately interactive with sensible defaults, and every question
-also exists as a flag so an unattended run in a container works too.
+Two things come from the environment - where the data directory is and where
+the database is. Everything `setup` asks for goes into the database.
 """
 
 from __future__ import annotations
 
 import argparse
-import datetime as dt
 import getpass
 import sys
-from pathlib import Path
 
-from . import db, migrations, security
-from .config import PROJECT_ROOT, VAR_DIR, Config, ConfigMissing, new_secret_key
-from .models import User
+from . import config as settings
+from . import db, environment, migrations, providers
+from .models import Allowlist, Provider
 
 
 # --------------------------------------------------------------------- input
 
 
-def _ask(prompt: str, default: str | None = None, *, non_interactive: bool = False) -> str:
+def _ask(prompt: str, default: str | None = None, *, non_interactive: bool = False,
+         secret: bool = False) -> str:
     if non_interactive:
         if default is None:
             raise SystemExit(f"missing value for '{prompt}' in non-interactive mode")
         return default
     suffix = f" [{default}]" if default is not None else ""
-    answer = input(f"{prompt}{suffix}: ").strip()
+    answer = (getpass.getpass if secret else input)(f"{prompt}{suffix}: ").strip()
     return answer or (default or "")
 
 
@@ -40,140 +39,112 @@ def _ask_yes_no(prompt: str, default: bool, *, non_interactive: bool = False) ->
     return answer in {"j", "ja", "y", "yes"}
 
 
-def _ask_password(non_interactive: bool = False, given: str | None = None) -> str:
-    if given:
-        problem = security.password_problem(given)
-        if problem:
-            raise SystemExit(f"password rejected: {problem}")
-        return given
-    if non_interactive:
-        raise SystemExit("--admin-password is required in non-interactive mode")
-    while True:
-        first = getpass.getpass("Password for the administrator: ")
-        problem = security.password_problem(first)
-        if problem:
-            print(f"  rejected: {problem}")
-            continue
-        second = getpass.getpass("Repeat password: ")
-        if first != second:
-            print("  the two entries differ")
-            continue
-        return first
-
-
 # --------------------------------------------------------------------- setup
 
 
 def cmd_setup(args: argparse.Namespace) -> int:
-    config_path = Path(args.config) if args.config else None
-    target = config_path or (VAR_DIR / "config.toml")
-    if target.exists() and not args.force:
-        print(f"There is already a configuration at {target}.")
-        print("Use --force to change settings. Existing accounts are kept.")
-        return 1
-
     non_interactive = args.non_interactive
+    data_dir = environment.data_dir()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    environment.vaults_dir().mkdir(exist_ok=True)
+
     print("MMO Vault - setting up the server variant\n")
+    print(f"Data directory: {data_dir}")
+    print(f"Database:       {environment.database_url()}\n")
 
-    config = Config()
-    if target.exists():
-        config = Config.load(target)
+    # Through Alembic, not create_all: the version table has to be stamped, or
+    # the next real migration trips over tables that already exist.
+    db.init()
+    migrations.upgrade_to_head(environment.database_url())
 
-    # 1. Database ------------------------------------------------------------
-    config.database_url = _ask(
-        "Database URL", args.database_url or config.database_url,
-        non_interactive=non_interactive,
-    )
-
-    # 2. Public identity, needed for passkeys --------------------------------
-    print(
-        "\nPasskeys are bound to a domain name. A later change invalidates every\n"
-        "registered passkey, so this is asked for rather than guessed."
-    )
-    config.auth.rp_id = _ask(
-        "Domain name (RP ID)", args.rp_id or config.auth.rp_id,
-        non_interactive=non_interactive,
-    )
-    default_origin = args.origin or (
-        config.auth.origin if config.auth.rp_id == "localhost" else f"https://{config.auth.rp_id}"
-    )
-    config.auth.origin = _ask("Origin (with scheme)", default_origin, non_interactive=non_interactive)
-
-    # 3. Uvicorn -------------------------------------------------------------
-    config.server.host = _ask(
-        "Listen address", args.host or config.server.host, non_interactive=non_interactive
-    )
-    config.server.port = int(
-        _ask("Port", str(args.port or config.server.port), non_interactive=non_interactive)
-    )
-    config.server.workers = int(
-        _ask("Workers", str(args.workers or config.server.workers), non_interactive=non_interactive)
-    )
-    print(
-        "\nOnly answer yes if a reverse proxy really sits in front of the service.\n"
-        "It makes the service trust X-Forwarded-For, which changes who counts as local."
-    )
-    config.server.proxy_headers = _ask_yes_no(
-        "Behind a reverse proxy?", args.proxy_headers or config.server.proxy_headers,
-        non_interactive=non_interactive,
-    )
-
-    # 4. Password login over loopback ----------------------------------------
-    print(
-        "\nPassword sign-in over loopback is the only way a password alone yields a\n"
-        "full session. Behind a proxy on the same host every request looks local,\n"
-        "which is why this stays off unless you say otherwise."
-    )
-    config.auth.allow_local_password_login = _ask_yes_no(
-        "Allow password sign-in over loopback?",
-        args.allow_local_password_login or config.auth.allow_local_password_login,
-        non_interactive=non_interactive,
-    )
-
-    if not config.secret_key:
-        config.secret_key = new_secret_key()
-
-    # 5. Administrator -------------------------------------------------------
-    admin_name = _ask("\nName of the administrator", args.admin_name or "admin",
-                      non_interactive=non_interactive)
-    admin_email = _ask("E-mail", args.admin_email or "", non_interactive=non_interactive)
-    password = _ask_password(non_interactive, args.admin_password)
-
-    # 6. Write it out --------------------------------------------------------
-    VAR_DIR.mkdir(parents=True, exist_ok=True)
-    (VAR_DIR / "vaults").mkdir(exist_ok=True)
-    written = config.save(target)
-
-    # Through Alembic, not create_all: otherwise the version table stays empty
-    # and the first real migration would try to create tables that already exist.
-    db.init(config)
-    migrations.upgrade_to_head(config.resolved_database_url())
     with db.session_scope() as session:
-        existing = session.query(User).filter_by(name=admin_name).one_or_none()
-        if existing is None:
-            existing = User(name=admin_name)
-            session.add(existing)
-        existing.email = admin_email
-        existing.password_hash = security.hash_password(password)
-        existing.is_admin = True
-        existing.is_active = True
-        # The password is a bootstrap credential, nothing more: the first
-        # session can do nothing except register a passkey.
-        existing.must_enroll_passkey = True
-        existing.enroll_expires_at = security.enrollment_deadline(config.auth.enrollment_hours)
+        existing_primary = session.query(Provider).filter(Provider.is_primary.is_(True)).one_or_none()
+        if existing_primary is not None and not args.force:
+            print(f"There is already a primary provider ('{existing_primary.name}').")
+            print("Use --force to replace its credentials and add administrators. Nothing is deleted.")
+            return 1
 
-    print(f"\nConfiguration written: {written}")
-    print(f"Database:              {config.resolved_database_url()}")
-    print(f"Vault directory:       {VAR_DIR / 'vaults'}")
+        config = settings.ensure_secret_key(session, settings.load(session))
+
+        # 1. Origin -------------------------------------------------------
+        print("The public address of the service. The providers' redirect URIs are\n"
+              "built from it, so it has to be right before the first sign-in.")
+        origin = _ask("Origin (with scheme)", args.origin or config.origin or None,
+                      non_interactive=non_interactive).rstrip("/")
+        if not origin.startswith(("https://", "http://localhost", "http://127.0.0.1")):
+            raise SystemExit("the origin must be https:// (plain http only for localhost)")
+        config.origin = origin
+
+        # 2. Primary provider ---------------------------------------------
+        print("\nThe primary identity provider. Further ones can be added in the\n"
+              "administration later.")
+        kind = _ask("Kind (microsoft / google / generic)",
+                    args.kind or (existing_primary.kind if existing_primary else "microsoft"),
+                    non_interactive=non_interactive).strip().lower()
+        name = _ask("Name (short, lower case)",
+                    args.provider_name or (existing_primary.name if existing_primary else kind),
+                    non_interactive=non_interactive).strip().lower()
+        tenant = None
+        issuer = ""
+        if kind == providers.MICROSOFT:
+            print("The tenant id or the tenant domain (e.g. contoso.onmicrosoft.com).\n"
+                  "'common' is refused: it would admit any Microsoft account.")
+            tenant = _ask("Tenant", args.tenant or (existing_primary.tenant if existing_primary else None),
+                          non_interactive=non_interactive)
+        elif kind == providers.GENERIC:
+            issuer = _ask("Issuer URL", args.issuer or (existing_primary.issuer if existing_primary else None),
+                          non_interactive=non_interactive)
+        client_id = _ask("Client ID", args.client_id or (existing_primary.client_id if existing_primary else None),
+                         non_interactive=non_interactive)
+        client_secret = _ask("Client secret", args.client_secret, non_interactive=non_interactive, secret=True)
+        sync_groups = _ask_yes_no("Mirror this provider's groups on sign-in?",
+                                  args.sync_groups, non_interactive=non_interactive)
+        try:
+            providers.validate(kind, issuer, tenant)
+        except providers.ProviderConfigError as err:
+            raise SystemExit(str(err))
+
+        provider = existing_primary or session.query(Provider).filter(Provider.name == name).one_or_none()
+        if provider is None:
+            provider = Provider(name=name)
+            session.add(provider)
+        provider.kind = kind
+        provider.tenant = tenant.strip() if tenant else None
+        provider.issuer = providers.issuer_for(kind, tenant, issuer)
+        provider.client_id = client_id
+        provider.client_secret = client_secret
+        provider.scopes = providers.scopes_for(kind, sync_groups)
+        provider.sync_groups = sync_groups
+        provider.enabled = True
+        session.query(Provider).filter(Provider.name != name).update({Provider.is_primary: False})
+        provider.is_primary = True
+        session.flush()
+
+        # 3. Administrators -----------------------------------------------
+        print("\nThe first administrators: mail addresses at this provider, comma separated.\n"
+              "They may sign in right away; everyone else has to be allowlisted by them.")
+        raw = _ask("Administrators", args.admins, non_interactive=non_interactive)
+        emails = sorted({e.strip().lower() for e in raw.split(",") if "@" in e})
+        if not emails:
+            raise SystemExit("at least one administrator address is required")
+        for email in emails:
+            entry = session.query(Allowlist).filter(
+                Allowlist.provider_id == provider.id, Allowlist.email == email
+            ).one_or_none()
+            if entry is None:
+                session.add(Allowlist(provider_id=provider.id, email=email, is_admin=True,
+                                      note="initial administrator"))
+            else:
+                entry.is_admin = True
+
+        settings.save(session, config)
+
+    print(f"\nProvider '{name}' ({kind}) is primary.")
+    print(f"Redirect URI to register at the provider:\n  {origin}/auth/oidc/{name}/callback")
+    print(f"Administrators: {', '.join(emails)}")
     print("\nNext:")
     print("  python mmo_vault.py start")
-    print(f"  then sign in as '{admin_name}' at {config.auth.origin}")
-    print(f"  the administration lives at {config.auth.origin.rstrip(chr(47))}/admin")
-    print(
-        f"\nThe first session can do nothing but register a passkey, and the window\n"
-        f"closes after {config.auth.enrollment_hours} hours. Reopen it with:\n"
-        f"  python mmo_vault.py enroll {admin_name}"
-    )
+    print(f"  then sign in at {origin} - the administration lives at {origin}/admin")
     return 0
 
 
@@ -181,80 +152,68 @@ def cmd_setup(args: argparse.Namespace) -> int:
 
 
 def cmd_start(args: argparse.Namespace) -> int:
-    try:
-        config = Config.load(Path(args.config) if args.config else None)
-    except ConfigMissing as err:
-        print(err, file=sys.stderr)
-        return 1
-
     import uvicorn
 
-    engine = db.init(config)
+    from .app import readiness_problems
+
+    engine = db.init()
     if migrations.pending_migrations(engine):
-        print(
-            "The database schema is out of date.\n"
-            "Run `python mmo_vault.py setup --force` or `alembic upgrade head`.",
-            file=sys.stderr,
-        )
+        print("The database schema is out of date.\n"
+              "Run `python mmo_vault.py setup --force` or `alembic upgrade head`.", file=sys.stderr)
         return 1
+    with db.session_scope() as session:
+        problems = readiness_problems(session)
+        config = settings.load(session)
+    if problems:
+        print("The service is not set up yet - missing: " + ", ".join(problems) + ".\n"
+              "Run `python mmo_vault.py setup` first.", file=sys.stderr)
+        return 1
+
     host = args.host or config.server.host
     port = args.port or config.server.port
-    print(f"MMO Vault on http://{host}:{port}  (rp_id={config.auth.rp_id})")
-
+    print(f"MMO Vault on http://{host}:{port}  (origin {config.origin})")
     uvicorn.run(
         "mmo_vault.server.app:create_app",
         factory=True,
         host=host,
         port=port,
-        # Reload and multiple workers are mutually exclusive; reload also has to
-        # keep a single process to hold on to its watcher.
         workers=None if args.reload else config.server.workers,
         reload=args.reload,
         proxy_headers=config.server.proxy_headers,
-        forwarded_allow_ips=(
-            config.server.forwarded_allow_ips if config.server.proxy_headers else None
-        ),
+        forwarded_allow_ips=(config.server.forwarded_allow_ips if config.server.proxy_headers else None),
     )
     return 0
 
 
-# -------------------------------------------------------------------- enroll
+# -------------------------------------------------------------- export-vault
 
 
-def cmd_enroll(args: argparse.Namespace) -> int:
-    try:
-        config = Config.load(Path(args.config) if args.config else None)
-    except ConfigMissing as err:
-        print(err, file=sys.stderr)
-        return 1
+def cmd_export_vault(args: argparse.Namespace) -> int:
+    """The way out when the provider is not there.
 
-    db.init(config)
-    password = args.password or security.generate_password()
+    Whoever has the shell gets the encrypted file and opens it locally with the
+    master password. The service itself cannot read it - and neither can this
+    command; it prints ciphertext.
+    """
+    from . import storage
+    from .models import Vault
+
+    db.init()
     with db.session_scope() as session:
-        user = session.query(User).filter_by(name=args.user).one_or_none()
-        if user is None:
-            print(f"No account named '{args.user}'.", file=sys.stderr)
+        vault = session.get(Vault, args.vault_id)
+        if vault is None:
+            match = session.query(Vault).filter(Vault.name == args.vault_id).all()
+            if len(match) == 1:
+                vault = match[0]
+        if vault is None:
+            print(f"No vault with id or unique name '{args.vault_id}'.", file=sys.stderr)
             return 1
-        if not user.is_active:
-            # Deliberately not reactivated on the side: disabling an account is
-            # a decision, and this command is about lost devices, not about
-            # undoing that decision.
-            print(
-                f"The account '{args.user}' is disabled. Enable it in the\n"
-                "administration first, then reopen enrollment.",
-                file=sys.stderr,
-            )
-            return 1
-        user.password_hash = security.hash_password(password)
-        user.must_enroll_passkey = True
-        user.enroll_expires_at = security.enrollment_deadline(config.auth.enrollment_hours)
-
-    print(f"Enrollment reopened for '{args.user}'.")
-    print(f"One-time password: {password}")
-    print(
-        f"Valid for {config.auth.enrollment_hours} hours. The session it grants can do\n"
-        "nothing but register a passkey; afterwards the password is discarded."
-    )
+        text = (storage.read_generation(vault.id, args.generation) if args.generation
+                else storage.read(vault.id))
+    if text is None:
+        print("Nothing stored for that vault/generation.", file=sys.stderr)
+        return 1
+    sys.stdout.write(text)
     return 0
 
 
@@ -264,25 +223,22 @@ def cmd_enroll(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mmo_vault.py",
-        description="MMO Vault - server variant",
+        description="MMO Vault - server variant. Configuration: MMO_VAULT_DIR, MMO_VAULT_DATABASE_URL.",
     )
-    parser.add_argument("--config", help="path to config.toml (default: var/config.toml)")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    setup = sub.add_parser("setup", help="interactive first-time setup")
-    setup.add_argument("--force", action="store_true", help="change an existing configuration")
+    setup = sub.add_parser("setup", help="first-time setup: origin, primary provider, administrators")
+    setup.add_argument("--force", action="store_true", help="replace the primary provider's credentials")
     setup.add_argument("--non-interactive", action="store_true")
-    setup.add_argument("--database-url")
-    setup.add_argument("--rp-id")
     setup.add_argument("--origin")
-    setup.add_argument("--host")
-    setup.add_argument("--port", type=int)
-    setup.add_argument("--workers", type=int)
-    setup.add_argument("--proxy-headers", action="store_true")
-    setup.add_argument("--allow-local-password-login", action="store_true")
-    setup.add_argument("--admin-name")
-    setup.add_argument("--admin-email")
-    setup.add_argument("--admin-password")
+    setup.add_argument("--kind", choices=list(providers.KINDS))
+    setup.add_argument("--provider-name")
+    setup.add_argument("--tenant")
+    setup.add_argument("--issuer")
+    setup.add_argument("--client-id")
+    setup.add_argument("--client-secret")
+    setup.add_argument("--sync-groups", action="store_true")
+    setup.add_argument("--admins", help="comma separated mail addresses")
     setup.set_defaults(func=cmd_setup)
 
     start = sub.add_parser("start", help="run the service")
@@ -291,17 +247,15 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--reload", action="store_true", help="for development")
     start.set_defaults(func=cmd_start)
 
-    enroll = sub.add_parser("enroll", help="reopen passkey registration for an account")
-    enroll.add_argument("user")
-    enroll.add_argument("--password", help="use this one-time password instead of a generated one")
-    enroll.set_defaults(func=cmd_enroll)
+    export = sub.add_parser("export-vault", help="print a vault's ciphertext to stdout")
+    export.add_argument("vault_id", help="vault id, or its name if unique")
+    export.add_argument("--generation", type=int, help="a kept generation instead of the current file")
+    export.set_defaults(func=cmd_export_vault)
 
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    # Everything is relative to the project root, so the service behaves the
-    # same no matter which directory it was started from.
-    sys.path.insert(0, str(PROJECT_ROOT))
+    sys.path.insert(0, str(environment.PROJECT_ROOT))
     args = build_parser().parse_args(argv)
     return args.func(args)

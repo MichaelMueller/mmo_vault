@@ -7,45 +7,10 @@ one that also works offline. These tests hold that line.
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
 
-from mmo_vault.server import injection, storage
-from mmo_vault.server.app import create_app
-from mmo_vault.server.cli import main
-from mmo_vault.server.config import Config
+from mmo_vault.server import injection
 
-from .authenticator import SoftAuthenticator
-
-ORIGIN = "https://vault.example"
-PASSWORD = "einSicheresBootstrapPasswort"
-HEADERS = {"X-Vault-Request": "1"}
-
-
-@pytest.fixture
-def config(tmp_path, monkeypatch):
-    path = tmp_path / "config.toml"
-    monkeypatch.setattr("mmo_vault.server.cli.VAR_DIR", tmp_path)
-    monkeypatch.setattr(storage, "VAULTS_DIR", tmp_path / "vaults")
-    assert main([
-        "--config", str(path), "setup", "--non-interactive",
-        "--database-url", f"sqlite:///{tmp_path / 'test.db'}",
-        "--admin-name", "admin", "--admin-password", PASSWORD,
-        "--rp-id", "vault.example", "--origin", ORIGIN,
-    ]) == 0
-    return Config.load(path)
-
-
-@pytest.fixture
-def client(config):
-    with TestClient(create_app(config), base_url=ORIGIN) as test_client:
-        test_client.post("/auth/login", json={"name": "admin", "password": PASSWORD},
-                         headers=HEADERS)
-        started = test_client.post("/auth/passkey/register/options", headers=HEADERS).json()
-        test_client.post("/auth/passkey/register/verify", json={
-            "challenge_id": started["challenge_id"],
-            "credential": SoftAuthenticator().create(started["options"], ORIGIN),
-        }, headers=HEADERS)
-        yield test_client
+from .conftest import HEADERS
 
 
 def test_the_file_on_disk_is_untouched():
@@ -94,7 +59,7 @@ def test_a_changed_application_file_is_noticed(monkeypatch, tmp_path):
         injection.render()
 
 
-def test_the_adapter_comes_before_the_application(client):
+def test_the_adapter_comes_before_the_application(admin):
     """Order decides whether any of this works at all.
 
     The application asks for window.mmoVaultServer while it starts up. An
@@ -102,12 +67,12 @@ def test_the_adapter_comes_before_the_application(client):
     question has already been answered with no - and the vault list stays empty
     without a single error to point at.
     """
-    served = client.get("/").text
+    served = admin.get("/").text
     assert served.index("window.mmoVaultServer") < served.index("MIN_FILE_ITERATIONS")
 
 
-def test_the_application_is_served_at_the_root(client):
-    result = client.get("/")
+def test_the_application_is_served_at_the_root(admin):
+    result = admin.get("/")
     assert result.status_code == 200
     assert "MMO VAULT" in result.text
     assert "window.mmoVaultServer" in result.text
@@ -115,46 +80,38 @@ def test_the_application_is_served_at_the_root(client):
     assert result.headers["cache-control"] == "no-store"
 
 
-def test_the_injection_is_public_reading(client):
+def test_the_injection_is_public_reading(admin):
     """It has to stay checkable - that is what the argument rests on."""
-    result = client.get("/api/injection")
+    result = admin.get("/api/injection")
     assert result.status_code == 200
     assert "window.mmoVaultServer" in result.text
     assert result.text == injection.render().script
 
 
-def test_without_a_session_there_is_no_application(config):
-    with TestClient(create_app(config), base_url=ORIGIN) as anonymous:
-        result = anonymous.get("/", follow_redirects=False)
-        assert result.headers["location"] == "/login"
+def test_without_a_session_there_is_no_application(anonymous):
+    result = anonymous.get("/", follow_redirects=False)
+    assert result.headers["location"] == "/login"
 
 
-def test_an_enrolment_session_gets_no_application(config):
-    with TestClient(create_app(config), base_url=ORIGIN) as client:
-        client.post("/auth/login", json={"name": "admin", "password": PASSWORD}, headers=HEADERS)
-        # Its one destination is the registration, not the vault.
-        assert client.get("/", follow_redirects=False).headers["location"] == "/enroll"
-
-
-def test_the_beacon_releases_a_lock(client):
+def test_the_beacon_releases_a_lock(admin):
     """navigator.sendBeacon can only send a plain POST.
 
     No custom headers - so neither the CSRF header nor the regular release
     endpoint work from there. The token is the proof instead.
     """
-    vault_id = client.post("/api/vaults", json={"name": "V"}, headers=HEADERS).json()["id"]
-    client.put(f"/api/vaults/{vault_id}/access", headers=HEADERS, json={"entries": [
-        {"subject_type": "user", "subject": "admin", "permission": "readwrite"}]})
-    token = client.post(f"/api/vaults/{vault_id}/lock", headers=HEADERS).json()["token"]
+    vault_id = admin.post("/api/vaults", json={"name": "V"}, headers=HEADERS).json()["id"]
+    admin.put(f"/api/vaults/{vault_id}/access", headers=HEADERS, json={"entries": [
+        {"subject_type": "user", "subject": "Admin", "permission": "readwrite"}]})
+    token = admin.post(f"/api/vaults/{vault_id}/lock", headers=HEADERS).json()["token"]
 
     # Without the CSRF header, as a beacon really sends it.
-    result = client.post(f"/api/vaults/{vault_id}/lock/release-beacon?token={token}")
+    result = admin.post(f"/api/vaults/{vault_id}/lock/release-beacon?token={token}")
     assert result.status_code == 200
     assert result.json()["released"] is True
-    assert client.get(f"/api/vaults/{vault_id}/lock").json()["locked_by"] is None
+    assert admin.get(f"/api/vaults/{vault_id}/lock").json()["locked_by"] is None
 
     # A wrong token releases nothing.
-    client.post(f"/api/vaults/{vault_id}/lock", headers=HEADERS)
-    assert client.post(
+    admin.post(f"/api/vaults/{vault_id}/lock", headers=HEADERS)
+    assert admin.post(
         f"/api/vaults/{vault_id}/lock/release-beacon?token=falsch"
     ).json()["released"] is False

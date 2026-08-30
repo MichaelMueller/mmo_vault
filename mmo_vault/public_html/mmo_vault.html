@@ -569,6 +569,21 @@ h1.brand{
   color:var(--on-surface);
 }
 .entry-row.masked .val{letter-spacing:2px;}
+/* Custom fields on note entries: label above the value, the whole row copies. */
+.entry-row.custom{flex-direction:column; align-items:stretch; gap:2px; cursor:pointer;}
+.entry-row.custom:hover{background:var(--surface-container-highest);}
+.entry-row.custom .cf-head{display:flex; align-items:center; justify-content:space-between; gap:6px;}
+.entry-row.custom .flabel{font-size:11.5px; color:var(--on-surface-variant); letter-spacing:.2px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;}
+.entry-row.custom.multi .val{white-space:pre-wrap; overflow-wrap:anywhere; max-height:9em; overflow:auto;}
+/* Editor rows in the dialog. */
+.cf-edit{display:grid; grid-template-columns:minmax(0,1fr) auto 30px; gap:6px 8px; align-items:start;
+  margin-top:10px; padding:10px; border-radius:var(--radius-s); background:var(--surface-container-high);}
+.cf-edit input, .cf-edit select, .cf-edit textarea{
+  width:100%; box-sizing:border-box; background:var(--surface-container-highest); color:var(--on-surface);
+  border:1px solid var(--outline-variant); border-radius:8px; padding:8px 10px; font:inherit; font-size:13.5px;}
+.cf-edit textarea{font-family:var(--font-mono); resize:vertical; min-height:64px;}
+.cf-edit .cf-value{grid-column:1 / -1;}
 .row-actions{display:flex; gap:2px; flex-shrink:0;}
 .mini-btn{
   width:30px; height:30px; border-radius:50%; border:none; background:transparent;
@@ -989,6 +1004,14 @@ h1.brand{
       <label id="notesFieldLabel" for="entryNotes" data-i18n="notes_label">Notizen</label>
     </div>
     <div class="md-preview md-body" id="notesPreview" style="display:none;"></div>
+
+    <!-- Only for notes: labelled fields of the person's own choosing - one line
+         of text, a password, or a block of text. -->
+    <div class="attachment-section" id="customFieldsSection" style="display:none;">
+      <span class="field-label" data-i18n="custom_fields_label">Eigene Felder</span>
+      <div id="customFieldList"></div>
+      <button type="button" class="btn btn-text" id="btnAddCustomField" data-i18n="add_custom_field_btn">＋ Feld hinzufügen</button>
+    </div>
 
     <div class="tag-input-box" id="tagInputBox">
       <span class="field-label" data-i18n="tags_label">Tags</span>
@@ -1486,6 +1509,18 @@ const I18N = {
     field_notes: 'Notizen',
     field_tags: 'Tags',
     field_attachments: 'Anhänge',
+    field_fields: 'Eigene Felder',
+    custom_fields_label: 'Eigene Felder',
+    add_custom_field_btn: '＋ Feld hinzufügen',
+    cf_label_placeholder: 'Bezeichnung',
+    cf_value_placeholder: 'Wert',
+    cf_kind_text: 'Text',
+    cf_kind_password: 'Passwort',
+    cf_kind_multiline: 'Mehrzeilig',
+    cf_remove_tt: 'Feld entfernen',
+    cf_copy_tt: 'Antippen kopiert den Wert',
+    toast_field_copied: 'Wert kopiert',
+    toast_secret_field_copied: 'Wert kopiert — Zwischenablage wird in {sec} s geleert.',
     hist_vault_created: 'Vault erstellt',
     hist_entry_created: 'Eintrag erstellt',
     hist_entry_edited: 'Eintrag bearbeitet',
@@ -1760,6 +1795,18 @@ const I18N = {
     field_notes: 'Notes',
     field_tags: 'Tags',
     field_attachments: 'Attachments',
+    field_fields: 'Custom fields',
+    custom_fields_label: 'Custom fields',
+    add_custom_field_btn: '＋ Add field',
+    cf_label_placeholder: 'Label',
+    cf_value_placeholder: 'Value',
+    cf_kind_text: 'Text',
+    cf_kind_password: 'Password',
+    cf_kind_multiline: 'Multi-line',
+    cf_remove_tt: 'Remove field',
+    cf_copy_tt: 'Tap to copy the value',
+    toast_field_copied: 'Value copied',
+    toast_secret_field_copied: 'Value copied — clipboard will be cleared in {sec} s.',
     hist_vault_created: 'Vault created',
     hist_entry_created: 'Entry created',
     hist_entry_edited: 'Entry edited',
@@ -3238,6 +3285,8 @@ function closeAllDialogs(){
   document.getElementById('cpEvalFill').style.width = '0%';
   currentTags = [];
   currentAttachments = [];
+  currentFields = [];
+  renderCustomFieldEditor();
   currentTotpParams = { ...TOTP_DEFAULTS };
   currentTotpParamsSecret = '';
   renderTagChips();
@@ -3904,7 +3953,14 @@ function assignMissingEntryNums(){
 const VERSION_FIELDS = ['type','title','url','username','password','totp',
                         'totpDigits','totpPeriod','totpAlgorithm','notes'];
 
-function tagKey(tags){ return (tags || []).join(' '); }
+function tagKey(tags){ return (tags || []).join(' '); }
+/* Custom fields compare as a whole: label, kind and value of every row. */
+function fieldsKey(fields){
+  return JSON.stringify((fields || []).map(f => [f.label || '', f.kind || 'text', f.value || '']));
+}
+function cloneFields(fields){
+  return (fields || []).map(f => ({ label: f.label || '', kind: f.kind || 'text', value: f.value || '' }));
+}
 function attachmentKey(atts){ return (atts || []).map(a => a.id).join(','); }
 
 /* Returns the names of the changed fields. Empty means: nothing to version.
@@ -3914,6 +3970,7 @@ function changedFields(before, updated){
   const fields = VERSION_FIELDS.filter(f => (before[f] === undefined ? '' : before[f]) !==
                                             (updated[f] === undefined ? '' : updated[f]));
   if(tagKey(before.tags) !== tagKey(updated.tags)) fields.push('tags');
+  if(fieldsKey(before.fields) !== fieldsKey(updated.fields)) fields.push('fields');
   if(attachmentKey(before.attachments) !== attachmentKey(updated.attachments)) fields.push('attachments');
   return fields;
 }
@@ -3925,6 +3982,7 @@ function versionSnapshot(entry){
   const snapshot = {};
   VERSION_FIELDS.forEach(f => { if(entry[f] !== undefined) snapshot[f] = entry[f]; });
   snapshot.tags = (entry.tags || []).slice();
+  if(entry.fields && entry.fields.length) snapshot.fields = cloneFields(entry.fields);
   snapshot.attachments = (entry.attachments || [])
     .map(a => ({ id: a.id, name: a.name, type: a.type, size: a.size }));
   return snapshot;
@@ -4165,6 +4223,11 @@ function fieldLabel(f){ return t('field_' + f) || f; }
 function versionValue(snapshot, field){
   if(field === 'tags') return (snapshot.tags || []).join(', ');
   if(field === 'attachments') return (snapshot.attachments || []).map(a => a.name).join(', ');
+  // Passwords among the custom fields stay masked here; the whole row can be
+  // taken over, but old secrets are not spread across the history view.
+  if(field === 'fields') return (snapshot.fields || [])
+    .map(f => (f.label || '?') + ': ' + (f.kind === 'password' ? '••••••••' : (f.value || '')))
+    .join('\n');
   const value = snapshot[field];
   return value === undefined || value === null ? '' : String(value);
 }
@@ -4245,7 +4308,7 @@ function renderVersionsList(){
     body.className = 'version-body';
     const fieldsToShow = (fields && fields.length)
       ? fields
-      : VERSION_FIELDS.concat(['tags','attachments']).filter(f => versionValue(version.snapshot, f) !== '');
+      : VERSION_FIELDS.concat(['tags','fields','attachments']).filter(f => versionValue(version.snapshot, f) !== '');
     fieldsToShow.forEach(field => {
       const value = versionValue(version.snapshot, field);
       const row = document.createElement('div');
@@ -4313,6 +4376,7 @@ function restoreVersion(version){
   const updated = { ...before };
   VERSION_FIELDS.forEach(f => { if(version.snapshot[f] !== undefined) updated[f] = version.snapshot[f]; });
   updated.tags = (version.snapshot.tags || []).slice();
+  updated.fields = cloneFields(version.snapshot.fields);
   // Attachments come back as metadata; the payloads are fetched by the lazy loader
   // from the respective block. Blocks that no longer exist are skipped
   // instead of creating a broken reference.
@@ -4340,6 +4404,7 @@ function restoreVersionField(version, field){
   const before = state.entries[idx];
   const updated = { ...before };
   if(field === 'tags') updated.tags = (version.snapshot.tags || []).slice();
+  else if(field === 'fields') updated.fields = cloneFields(version.snapshot.fields);
   else updated[field] = version.snapshot[field] === undefined ? '' : version.snapshot[field];
   if(!changedFields(before, updated).length) return;   // already identical
 
@@ -4670,7 +4735,10 @@ function entryMatchesTerm(en, term){
   return (en.title||'').toLowerCase().includes(term) ||
          (en.username||'').toLowerCase().includes(term) ||
          (en.notes||'').toLowerCase().includes(term) ||
-         (en.tags||[]).some(tag => tag.toLowerCase().includes(term));
+         (en.tags||[]).some(tag => tag.toLowerCase().includes(term)) ||
+         // Labels and plain values of custom fields; passwords are never searched.
+         (en.fields||[]).some(f => (f.label||'').toLowerCase().includes(term) ||
+           (f.kind !== 'password' && (f.value||'').toLowerCase().includes(term)));
 }
 
 function filteredEntries(){
@@ -4801,6 +4869,7 @@ function renderEntries(){
       </div>
       <div class="totp-slot"></div>` : ''}
       <div class="notes-slot" style="${isLogin ? 'margin-top:8px;' : 'margin-top:10px;'} font-size:12.5px; color:var(--on-surface-variant); white-space:pre-wrap;"></div>
+      <div class="fields-slot"></div>
       ${attachments.length ? `
       <div class="entry-row" data-role="attachrow" style="cursor:pointer;">
         <span class="val">📎 ${attachments.length}${t('files_count')}</span>
@@ -4837,6 +4906,10 @@ function renderEntries(){
         // not a document.
         notesEl.textContent = entry.notes;
       }
+    }
+
+    if(type === 'freitext' && (entry.fields || []).length){
+      renderCustomFieldRows(card.querySelector('.fields-slot'), entry.fields);
     }
 
     const versionRow = card.querySelector('[data-role="versionrow"]');
@@ -5017,6 +5090,8 @@ async function duplicateEntry(id){
       id: uid(),
       num: takeNextEntryNum(),
       title: title,
+      tags: (source.tags || []).slice(),
+      fields: cloneFields(source.fields),
       attachments: copiedAttachments
     });
     addHistory('hist_entry_duplicated', title);
@@ -5079,6 +5154,7 @@ function setDialogType(type){
   document.querySelectorAll('#typeSelectRow .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.type === type));
   document.getElementById('entryType').value = type;
   document.getElementById('fieldsZugang').style.display = type === 'zugang' ? 'block' : 'none';
+  document.getElementById('customFieldsSection').style.display = type === 'freitext' ? 'block' : 'none';
   const notesLabel = document.querySelector('#notesFieldWrap label');
   const notesArea = document.getElementById('entryNotes');
   const isNote = type === 'freitext';
@@ -5096,6 +5172,128 @@ function setDialogType(type){
 document.querySelectorAll('#typeSelectRow .seg-btn').forEach(btn => {
   btn.onclick = () => setDialogType(btn.dataset.type);
 });
+
+/* ---------- Custom fields (note entries) ----------
+
+   A note may carry any number of labelled fields: a line of text, a password
+   or a block of text. They live in entry.fields as {label, kind, value} and
+   travel with the entry - into the text block, the versions and duplicates.
+   On the card every field is one row, and tapping the row copies its value. */
+
+const CUSTOM_FIELD_KINDS = ['text', 'password', 'multiline'];
+let currentFields = [];
+
+function renderCustomFieldEditor(){
+  const list = document.getElementById('customFieldList');
+  list.innerHTML = '';
+  currentFields.forEach((field, i) => {
+    const row = document.createElement('div');
+    row.className = 'cf-edit';
+
+    const label = document.createElement('input');
+    label.type = 'text';
+    label.autocomplete = 'off';
+    label.placeholder = t('cf_label_placeholder');
+    label.value = field.label || '';
+    label.oninput = () => { currentFields[i].label = label.value; };
+
+    const kind = document.createElement('select');
+    CUSTOM_FIELD_KINDS.forEach(k => {
+      const opt = document.createElement('option');
+      opt.value = k;
+      opt.textContent = t('cf_kind_' + k);
+      kind.appendChild(opt);
+    });
+    kind.value = CUSTOM_FIELD_KINDS.includes(field.kind) ? field.kind : 'text';
+    kind.onchange = () => {
+      // Keep the value, swap the control: a password and a text field are the
+      // same string in a different coat.
+      currentFields[i].kind = kind.value;
+      renderCustomFieldEditor();
+    };
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'mini-btn';
+    remove.title = t('cf_remove_tt');
+    remove.textContent = '✕';
+    remove.onclick = () => { currentFields.splice(i, 1); renderCustomFieldEditor(); };
+
+    const value = document.createElement(field.kind === 'multiline' ? 'textarea' : 'input');
+    value.className = 'cf-value';
+    if(field.kind !== 'multiline'){
+      // Plain text even for passwords: the dialog is already behind the master
+      // password, and a masked field cannot be proof-read.
+      value.type = 'text';
+      value.autocomplete = 'off';
+    } else {
+      value.rows = 3;
+    }
+    value.placeholder = t('cf_value_placeholder');
+    value.value = field.value || '';
+    value.oninput = () => { currentFields[i].value = value.value; };
+
+    row.append(label, kind, remove, value);
+    list.appendChild(row);
+  });
+}
+
+function collectCustomFields(){
+  return currentFields.map(f => ({
+    label: (f.label || '').trim(),
+    kind: CUSTOM_FIELD_KINDS.includes(f.kind) ? f.kind : 'text',
+    value: f.kind === 'multiline' ? (f.value || '') : (f.value || '').trim()
+  }));
+}
+
+document.getElementById('btnAddCustomField').onclick = () => {
+  currentFields.push({ label: '', kind: 'text', value: '' });
+  renderCustomFieldEditor();
+  const inputs = document.querySelectorAll('#customFieldList .cf-edit input[type="text"]');
+  const last = inputs[inputs.length - 2];   // the label of the new row
+  if(last) last.focus();
+};
+
+/* The rows on the card. Tapping a row copies its value; a password is masked,
+   can be revealed, and is cleared from the clipboard again like any secret. */
+function renderCustomFieldRows(slot, fields){
+  fields.forEach(field => {
+    const kind = CUSTOM_FIELD_KINDS.includes(field.kind) ? field.kind : 'text';
+    const value = field.value || '';
+    const secret = kind === 'password';
+    const row = document.createElement('div');
+    row.className = 'entry-row custom' + (kind === 'multiline' ? ' multi' : '') + (secret ? ' masked' : '');
+    row.title = t('cf_copy_tt');
+
+    const head = document.createElement('div');
+    head.className = 'cf-head';
+    const label = document.createElement('span');
+    label.className = 'flabel';
+    label.textContent = field.label || t('cf_value_placeholder');
+    head.appendChild(label);
+
+    const val = document.createElement('span');
+    val.className = 'val';
+    val.textContent = secret ? '•'.repeat(Math.min(value.length || 8, 16)) : value;
+
+    if(secret){
+      const eye = document.createElement('button');
+      eye.className = 'mini-btn';
+      eye.title = t('toggle_pw_tt');
+      eye.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.7 7.6 1 12c1.7 4.4 6 7.5 11 7.5s9.3-3.1 11-7.5c-1.7-4.4-6-7.5-11-7.5zm0 12.5a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>';
+      eye.onclick = (ev) => {
+        ev.stopPropagation();
+        const masked = row.classList.toggle('masked');
+        val.textContent = masked ? '•'.repeat(Math.min(value.length || 8, 16)) : value;
+      };
+      head.appendChild(eye);
+    }
+
+    row.onclick = () => copyToClipboard(value, secret ? 'toast_secret_field_copied' : 'toast_field_copied', secret);
+    row.append(head, val);
+    slot.appendChild(row);
+  });
+}
 
 /* ---------- Tags (chip input in the entry dialog) ---------- */
 
@@ -5295,7 +5493,9 @@ function openEntryDialog(entry){
   currentTotpParamsSecret = entry ? (entry.totp || '') : '';
   currentTags = entry ? (entry.tags || []).slice() : [];
   currentAttachments = entry ? (entry.attachments || []).slice() : [];
+  currentFields = entry ? cloneFields(entry.fields) : [];
   document.getElementById('tagInputField').value = '';
+  renderCustomFieldEditor();
   renderTagChips();
   renderAttachmentList();
   updateTotpParamsHint();
@@ -5328,6 +5528,8 @@ document.getElementById('btnSaveEntry').onclick = () => {
     totpAlgorithm: currentTotpParams.algorithm,
     notes: document.getElementById('entryNotes').value.trim(),
     tags: currentTags.slice(),
+    // Rows without label and value are noise, not data.
+    fields: isLogin ? [] : collectCustomFields().filter(f => f.label || f.value),
     attachments: currentAttachments.slice()
   };
   if(id){

@@ -249,6 +249,7 @@ removed from a group keeps access until their session ends (at most
 
 - **AES-256-GCM**, key derived with PBKDF2-HMAC-SHA256 at 600,000 iterations (OWASP recommendation), 16-byte salt, a dedicated 96-bit IV per block
 - **Two entry types** — login (URL, username, password, 2FA, notes) and free text
+- **Custom fields on free-text entries** — any number of labelled fields, each a line of text, a password or a multi-line block. On the card every field is one row; tapping it copies the value (passwords masked, revealable, cleared from the clipboard after 30 s). They are versioned, duplicated and searched (labels and non-password values) like everything else
 - **2FA/TOTP** per RFC 6238, including 8-digit as well as SHA-256/SHA-512 accounts. QR codes can be imported as an image via the native `BarcodeDetector` API
 - **File attachments** in their own encrypted blocks — they are only decrypted on download, not already on unlock
 - **Tags, full-text search and type filter**, plus field filters in the search: `id=42`, `tag=work`, `typ=freitext`, `benutzer=admin`, `titel=bank` (the filter keys are German, matching the interface) — freely combinable. Values containing spaces go in quotes: `tag="my tag"`; a quoted string without a key searches for that phrase

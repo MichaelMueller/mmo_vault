@@ -1,7 +1,7 @@
 # MMO Vault — Anforderungsspezifikation
 
-**Version:** 2.0.0
-**Stand:** 2026-08-29
+**Version:** 2.1.0
+**Stand:** 2026-08-30
 **Status:** Im Eigenbetrieb freigegeben. Alle automatisiert prüfbaren Kriterien aus Kapitel 9 sind verifiziert; die verbleibenden erfordern manuelle Durchführung und stehen dort als unmarkierte Kästchen. Diese Zahl wird hier bewusst nicht wiederholt, damit sie nicht veraltet.
 **Autor:** Michael Müller
 
@@ -16,11 +16,11 @@ Seit 2.0.0 gibt es **zwei Betriebsarten**:
 | Betriebsart | Was |
 |---|---|
 | **Lokal** | Die Datei per Doppelklick im Browser. Ohne Server, ohne Installation, ohne Netzwerkzugriff. |
-| **Server** | Ein FastAPI-Dienst mit Konten, Passkeys, Gruppen, geteilten Vaults und Dateihistorie. Er liefert dieselbe HTML-Datei aus und legt die Vault-Dateien ab. |
+| **Server** | Ein FastAPI-Dienst mit Anmeldung über einen Identity Provider (OIDC), Allowlist, Gruppen, geteilten Vaults und Dateihistorie. Er liefert dieselbe HTML-Datei aus und legt die Vault-Dateien ab. Seit 2.1.0 ohne eigene Benutzerverwaltung: Identität kommt vom Provider, Konfiguration liegt in der Datenbank. |
 
 Der Server ist **Ablage und Zugriffskontrolle**, nicht Kryptografie. Verschlüsselt und entschlüsselt wird ausschließlich im Browser; Master-Passwort und Schlüssel erreichen ihn nie.
 
-Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 2.0.0. Es richtet sich an Entwicklung, Review und Abnahme.
+Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 2.1.0. Es richtet sich an Entwicklung, Review und Abnahme.
 
 ### 1.1 Nicht im Geltungsbereich
 
@@ -130,21 +130,24 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 
 | ID | Anforderung |
 |---|---|
-| SEC-33 | Reguläre Anmeldeverfahren sind **Passkey** (WebAuthn) und **OIDC**. Ein Passwort allein DARF KEIN reguläres Verfahren sein. |
-| SEC-34 | Passkeys MÜSSEN als Resident Keys mit erzwungener Nutzerverifikation angelegt werden. Die RP ID MUSS aus der Konfiguration stammen und DARF NICHT aus dem `Host`-Header abgeleitet werden. |
-| SEC-35 | Ein Konto ohne Passkey trägt `must_enroll_passkey`. Die daraus entstehende Sitzung DARF ausschließlich die Passkey-Registrierung aufrufen — keine Vaults, keine Verwaltung, keine ausgelieferte Anwendung. |
-| SEC-36 | Nach der ersten Registrierung MUSS der Passwort-Hash **verworfen** werden, nicht nur ignoriert. Das Registrierungsfenster MUSS ablaufen. |
-| SEC-37 | Passwörter und Ersatzcodes MÜSSEN mit **Argon2id** gehasht werden. Ersatzcodes sind einmalig verwendbar; ihre Einlösung MUSS erneut eine Registrierungspflicht auslösen. |
-| SEC-38 | Die Passwort-Anmeldung über Loopback ist optional und im Standard **aus**. Sie MUSS drei Bedingungen gemeinsam verlangen: Peer-Adresse ist Loopback, **kein** `X-Forwarded-For`- oder `Forwarded`-Header vorhanden, und die Einstellung ist gesetzt. Ein Forwarding-Header DARF NIE für eine Erlaubnis zählen, nur dagegen. |
-| SEC-39 | Fehlversuche MÜSSEN dauerhaft gezählt und nach einer Schwelle gesperrt werden. Der Zähler MUSS die Ablehnung überleben — eine Zählung, die mit der Transaktion zurückgerollt wird, ist wirkungslos. |
-| SEC-40 | Die OIDC-Identität ist `(issuer, sub)`. Die Mailadresse DARF nur bei der **ersten** Bindung und nur mit `email_verified` herangezogen werden. Es DARF KEINE Selbstregistrierung geben. |
-| SEC-41 | Sitzungen MÜSSEN serverseitig gehalten und damit widerrufbar sein. Das Sperren eines Kontos MUSS seine Sitzungen sofort beenden. |
+| SEC-33 | Das **einzige** Anmeldeverfahren ist OIDC gegen einen konfigurierten Provider. Der Dienst DARF KEINE eigenen Anmeldegeheimnisse führen — keine Passwörter, keine Passkeys, keine Ersatzcodes, kein zweiter Faktor. MFA, Gerätebindung und Offboarding sind Sache des Providers. |
+| SEC-34 | Die Identität eines Kontos ist `(provider, sub)`. Sie wird bei der **ersten** Anmeldung gebunden und danach nie über die Mailadresse geändert; eine geänderte Adresse beim Provider aktualisiert das Konto, erzeugt aber kein zweites. |
+| SEC-35 | Wer hinein darf, bestimmt eine **Allowlist pro Provider**: Mailadresse plus Administrator-Flag. Es DARF KEINE Selbstregistrierung geben. Ein Konto entsteht ausschließlich durch die erste erfolgreiche Anmeldung einer gelisteten Adresse. |
+| SEC-36 | Die Mailadresse DARF nur verifiziert gegen die Allowlist geprüft werden: bei generischen Providern und Google über `email_verified`, bei Microsoft über die Übereinstimmung von `tid` mit dem konfigurierten Tenant (Microsoft setzt `email_verified` nicht). Eine unverifizierte Adresse bindet nichts. |
+| SEC-37 | Das Administrator-Flag MUSS bei **jeder** Anmeldung aus der Allowlist übernommen werden. Das Entfernen von der Liste oder das Entziehen des Flags MUSS die Sitzungen des Kontos sofort beenden und das Konto deaktivieren bzw. herabstufen — nicht erst beim nächsten Login. |
+| SEC-38 | Ein Microsoft-Provider MUSS einen konkreten Tenant tragen. Die offenen Aliasse `common`, `organizations` und `consumers` MÜSSEN abgewiesen werden: eine Adresse ist nur vertrauenswürdig, wenn der eigene Tenant sie verwaltet. |
+| SEC-39 | Der Dienst liest genau **zwei** Umgebungsvariablen: `MMO_VAULT_DIR` und `MMO_VAULT_DATABASE_URL`. Alles Weitere — Origin, Provider samt Client-Secret, Allowlist, Sitzungsdauern, Grenzen, der Signaturschlüssel für den OIDC-State — MUSS in der Datenbank liegen. Es gibt keine Konfigurationsdatei. |
+| SEC-40 | Ohne Origin, ohne aktivierten Provider oder ohne gelisteten Administrator DARF der Dienst nicht starten; er MUSS benennen, was fehlt. Der Origin MUSS `https` sein (Ausnahme: `localhost`). |
+| SEC-41 | Sitzungen MÜSSEN serverseitig gehalten und damit widerrufbar sein. Das Deaktivieren eines Kontos MUSS seine Sitzungen sofort beenden. |
 | SEC-42 | Zustandsändernde Endpunkte MÜSSEN zusätzlich zu `SameSite=Lax` den Header `X-Vault-Request` verlangen. |
 | SEC-43 | Der Dienst DARF Vault-Inhalte nur strukturell prüfen — Header, parsbare Zeilen, Größe. Niemals den Inhalt. |
-| SEC-44 | Das Client-Secret eines Providers DARF nach dem Anlegen nicht mehr ausgegeben werden, auch nicht an Administratoren. |
-| SEC-45 | Der letzte aktive Administrator DARF weder herabgestuft noch gesperrt noch gelöscht werden. |
+| SEC-44 | Das Client-Secret eines Providers DARF nach dem Anlegen nicht mehr ausgegeben werden, auch nicht an Administratoren. Der primäre Provider DARF weder deaktiviert noch gelöscht werden; ein Provider mit Konten oder Allowlist-Einträgen DARF NICHT gelöscht werden. |
+| SEC-45 | Der letzte Administrator-Eintrag der Allowlist DARF weder herabgestuft noch entfernt werden. |
+| SEC-46 | Der Gruppen-Sync läuft mit dem **eigenen Access-Token des Nutzers** beim Login — kein Service-Account, keine verzeichnisweiten Rechte, kein Hintergrundjob. Ein fehlgeschlagener Abruf DARF NICHTS ändern: weder aussperren noch befördern; die letzte bekannte Mitgliedschaft bleibt und der Fehlschlag wird protokolliert. |
+| SEC-47 | Gespiegelte Gruppen werden über ihre externe Kennung identifiziert, nicht über den Namen. Kollidiert ein Provider-Gruppenname mit einer lokalen Gruppe, MUSS der Spiegel einen eindeutigen Namen erhalten — Freigaben adressieren Gruppen über den Namen, ein Doppel wäre mehrdeutig. Die Mitgliedschaft eines Spiegels DARF NICHT von Hand editierbar sein. |
+| SEC-48 | Die Migration von 2.0.0 MUSS gebundene OIDC-Konten mit ihrem Administrator-Flag in die Allowlist übernehmen, Konten ohne Provider deaktivieren, alle Sitzungen beenden und die Credential-Tabellen (Passkeys, Ersatzcodes, Challenges) entfernen. Eine vorhandene `config.toml` wird einmalig in die Datenbank importiert. |
 
-| SEC-46 | Die Registrierung eines **weiteren** Passkeys (außerhalb der Registrierungspflicht) MUSS eine Sitzung verlangen, die **stark und frisch** ist: entstanden durch Passkey oder OIDC — nie durch ein Passwort — und jünger als das konfigurierte Fenster (Vorgabe 10 Minuten). Ein gestohlenes Sitzungscookie scheitert an der Frische, ein gestohlenes Passwort an der Stärke. Die erneute Anmeldung ist die Re-Authentifizierung; einen eigenen Bestätigungsendpunkt gibt es bewusst nicht, weil die Passkey-Anmeldung die Sitzung ohnehin neu ausstellt. |
+Entfallen seit 2.1.0: die früheren SEC-33 bis SEC-39 und SEC-46 (Passkeys, Passwort-Bootstrap, Argon2, Loopback-Ausnahme, Fehlversuchszähler, Frische der Sitzung für weitere Passkeys). Sie haben kein Gegenstück mehr, weil der Dienst keine Anmeldegeheimnisse mehr führt.
 
 ### 3.5 Bedrohungsmodell
 
@@ -161,8 +164,10 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 - Manipulation der HTML-Datei selbst. Wer die Anwendungsdatei austauschen kann, kann beliebigen Code ausführen. Die Datei SOLL aus vertrauenswürdiger Quelle stammen und schreibgeschützt abgelegt werden.
 - Verlust des Master-Passworts. Es gibt **keine** Wiederherstellung, keine Hintertür, kein Reset.
 - **Serverbetrieb:** Wer den Dienst kontrolliert, kann Vault-Dateien löschen, zurückrollen oder durch ältere Generationen ersetzen — und beliebigen Code in die ausgelieferte Anwendung injizieren. Lesen kann er die Vault-Dateien nicht. Verfügbarkeit und Integrität hängen damit am Server, Vertraulichkeit weiterhin allein am Master-Passwort. Wer den höchsten Anspruch hat, nutzt die lokale Datei.
+- **Identity Provider:** Wer den Provider kontrolliert, kann sich als jede gelistete Adresse anmelden — der Dienst vertraut dem Wort des Providers. Das ist der bewusste Tausch: eine Stelle für Identität, MFA und Offboarding statt eines zweiten Satzes Zugangsdaten, der verloren gehen kann. Fällt der Provider aus, ist der *Dienst* nicht erreichbar, die Daten schon: `export-vault` liefert jede Datei als NDJSON, die sich mit der lokalen Anwendung öffnen lässt.
+- **Gruppen-Sync ist nachlaufend:** Eine Gruppenänderung beim Provider wirkt beim nächsten Login. Wer aus einer Gruppe entfernt wird, behält den Zugriff bis zum Sitzungsende (höchstens `session_hours`, Vorgabe 12 h) — oder bis ein Administrator die Sitzung widerruft.
 - **Geteilte Vaults:** Alle Schreibberechtigten kennen dasselbe Master-Passwort. Der Entzug einer Freigabe nimmt den Zugriff auf den Dienst, **nicht** die Kenntnis des Passworts. Nach einem Entzug gehört das Master-Passwort gewechselt.
-- **Wiederherstellung von Konten:** Wer Shell-Zugang zum Server hat, kann sich über `enroll` einen Zugang verschaffen. Das ist beabsichtigt und unvermeidbar — wer den Server kontrolliert, kontrolliert den Dienst.
+- **Zugang über den Server:** Wer Shell-Zugang zum Server hat, kann sich über `setup --force` selbst auf die Allowlist setzen oder mit `export-vault` jede Datei ziehen. Das ist beabsichtigt und unvermeidbar — wer den Server kontrolliert, kontrolliert den Dienst. Lesen kann er die Dateien trotzdem nicht.
 - Die Dateisperre ist beratend und keine Sicherheitsgrenze. Sie schützt vor versehentlichem Parallelbearbeiten, nicht vor einem böswilligen Client.
 - Die verlängerte Lebensdauer abgelöster Geheimnisse. Ein gewechseltes Passwort bleibt im Verlauf lesbar — das ist der Zweck der Versionierung, erhöht aber den Schaden einer preisgegebenen Vault-Datei. Wer das nicht will, verwirft die betroffenen Versionen (FUN-82) oder schaltet die Historie über das Löschen ab.
 
@@ -329,10 +334,15 @@ Datei bleibt davon unberührt und funktioniert unverändert ohne Netzwerk.
 | FUN-96 | Wiederherstellen MUSS eine **neue** Generation erzeugen, statt zurückzuspulen. Der Verlauf bleibt damit lückenlos und der Schritt umkehrbar. Generationsnummern DÜRFEN NICHT wiederverwendet werden. |
 | FUN-97 | Generationen MÜSSEN einzeln, unterhalb einer Nummer oder vollständig löschbar sein — ausschließlich durch Administratoren und ausschließlich von Hand. Die aktuelle Datei bleibt dabei unberührt. |
 | FUN-98 | Anzahl und Gesamtgröße der Generationen MÜSSEN angezeigt werden, mit einem Hinweis ab einer konfigurierbaren Marke. Die Marke ist eine Aussage, keine Grenze. |
-| FUN-99 | `mmo_vault.py` MUSS die Befehle `setup`, `start` und `enroll` bereitstellen. `setup` läuft interaktiv oder über Schalter, fragt RP ID und Origin ausdrücklich ab und legt den Administrator mit Passwort und Registrierungspflicht an. |
+| FUN-99 | `mmo_vault.py` MUSS die Befehle `setup`, `start` und `export-vault` bereitstellen. `setup` läuft interaktiv oder über Schalter, fragt Origin, Art und Zugangsdaten des primären Providers (Microsoft mit Tenant, Google, generisch mit Issuer) sowie die ersten Administrator-Adressen ab und schreibt alles in die Datenbank. Ein zweiter Lauf verweigert ohne `--force`; mit `--force` ersetzt er Zugangsdaten und ergänzt Administratoren, löscht aber nichts. |
 | FUN-100 | `start` MUSS Konfiguration und Schemastand prüfen und mit einer verständlichen Meldung abbrechen, statt mit einem Stacktrace. |
-| FUN-101 | `enroll` MUSS ein neues Registrierungsfenster mit Einmalpasswort öffnen. Es ist der Weg zurück, wenn Passkeys und Ersatzcodes verloren sind. |
+| FUN-101 | `export-vault <id|name> [--generation N]` MUSS den aktuellen Stand oder eine Generation eines Vaults unverändert auf die Standardausgabe schreiben. Es ist der Weg zu den Daten, wenn der Provider nicht erreichbar ist. |
 | FUN-102 | Die Datenbank MUSS über SQLAlchemy abstrahiert sein, ohne Bindung an ein bestimmtes System. Vorgabe ist SQLite; Migrationen laufen über Alembic. |
+| FUN-103 | Administratoren MÜSSEN weitere Provider anlegen, ändern, aktivieren, deaktivieren und zum primären machen können. Die Redirect-URI MUSS angezeigt werden; Issuer und Scopes werden aus der Art abgeleitet (Microsoft: Tenant, Google: fest, generisch: Issuer von Hand). |
+| FUN-104 | Administratoren MÜSSEN die Allowlist je Provider pflegen können: Adresse, Administrator-Flag, Notiz. Adressen werden normalisiert (Kleinschreibung, getrimmt); Doppel und ungültige Adressen werden abgewiesen. Der Eintrag zeigt, ob bereits ein Konto dahintersteht. |
+| FUN-105 | Konten entstehen nicht von Hand. Administratoren KÖNNEN sie deaktivieren, ihre Sitzungen widerrufen, lokale Gruppen zuweisen und sie löschen; das Löschen MUSS Freigaben, Sperren und Gruppenmitgliedschaften des Kontos mitnehmen. |
+| FUN-106 | Gruppen sind **lokal** (Mitglieder von Hand) oder **gespiegelt** (Mitglieder vom Provider, Schalter `sync_groups` je Provider für Microsoft und Google). Ein Spiegel, dessen Provider nicht mehr synchronisiert, MUSS als eingefroren gekennzeichnet sein und behält seinen letzten Stand. Freigaben funktionieren auf beide gleich. |
+| FUN-107 | Einstellungen — Origin, Sitzungsdauer, Leerlaufzeit, Größenlimit, Sperrlaufzeit, Warnmarke der Historie — MÜSSEN in der Verwaltung änderbar sein und ohne Neustart wirken. |
 
 ### 4.8 Markdown in Freitext-Einträgen
 
@@ -492,6 +502,7 @@ erkennbar.
 - **Master-Passwort:** keine Wiederherstellung. Getrennt vom Vault hinterlegen.
 - **Cloud-Sync-Ordner:** Nextcloud, OneDrive und Dropbox tauschen Dateien intern aus; gespeicherte Datei-Handles können dadurch ins Leere zeigen. Die Anwendung erkennt das und räumt die Verknüpfung auf. Gleichzeitiges Bearbeiten auf mehreren Geräten wird nicht unterstützt und führt zu Sync-Konflikten.
 - **Ablage der Anwendungsdatei:** aus vertrauenswürdiger Quelle beziehen und schreibgeschützt ablegen.
+- **Serverbetrieb:** Das Datenverzeichnis (`MMO_VAULT_DIR`) enthält Datenbank und Vault-Dateien und ist die einzige Sicherungseinheit. Die Datenbank enthält die Client-Secrets der Provider — sie gehört in kein Repository und in keinen unverschlüsselten Cloud-Ordner. Bei der Registrierung der Anwendung beim Provider die von `setup` ausgegebene Redirect-URI eintragen; für den Gruppen-Sync `GroupMember.Read.All` (Microsoft, delegiert) bzw. `cloud-identity.groups.readonly` (Google Workspace) freigeben.
 
 ---
 
@@ -606,30 +617,33 @@ Abgehakte Punkte sind nachweisbar geprüft — die Krypto-, Datenintegritäts-, 
 
 ### 9.10 Serverbetrieb
 
-- [x] `setup` legt Konfiguration, Schema und Administrator an; ein zweiter Lauf verweigert ohne `--force`
-- [x] `start` bricht ohne Konfiguration und bei veraltetem Schema verständlich ab
-- [x] `enroll` öffnet ein neues Fenster; unbekanntes Konto meldet sich mit Fehlercode 1
-- [x] Passkey anlegen, damit anmelden, auch ohne Kontonamen; Challenge gilt genau einmal; fremder Passkey wird abgewiesen
-- [x] Die Bootstrap-Sitzung kann ausschließlich registrieren — alles andere antwortet 403
-- [x] Nach der Registrierung ist der Passwort-Hash verworfen und die Passwort-Anmeldung abgewiesen
-- [x] Ersatzcode löst eine erneute Registrierungspflicht aus und gilt nur einmal
-- [x] Loopback-Ausnahme greift nur ohne Proxy-Header und nur mit gesetzter Einstellung
-- [x] Fehlversuche werden gezählt und sperren das Konto; der Zähler überlebt die Ablehnung
-- [x] Gruppen, Freigaben an Benutzer und Gruppen, weiter gehendes Recht gewinnt
-- [x] Letzter Administrator lässt sich weder herabstufen noch sperren noch löschen; Sperren widerruft Sitzungen
-- [x] Client-Secret eines Providers wird nie ausgegeben; belegter Provider lässt sich nicht löschen
-- [x] OIDC bindet nur an vorhandene Konten und nur mit bestätigter Mailadresse; gebundenes Subjekt gewinnt gegen die Adresse
-- [x] Schreiben mit gültiger Sperre und ETag; veralteter ETag ergibt 412, fehlende Sperre 409, fehlendes If-Match 428
-- [x] Sperre: Zweiter bekommt sie nicht, erneutes Holen verlängert, Ablauf wird faul erkannt, Administrator kann brechen
+- [x] `setup` schreibt Origin, primären Provider, Signaturschlüssel und Administrator-Allowlist in die Datenbank; keine Datei entsteht; ein zweiter Lauf verweigert ohne `--force`; `--force` ersetzt Zugangsdaten und ergänzt Administratoren ohne zu löschen
+- [x] `setup` weist unsicheren Origin, Microsoft ohne konkreten Tenant und leere Administratorliste ab
+- [x] `start` bricht ohne Konfiguration und bei veraltetem Schema verständlich ab; `create_app` nennt, was fehlt
+- [x] Nur `MMO_VAULT_DIR` und `MMO_VAULT_DATABASE_URL` werden gelesen; fehlende Einstellungen fallen auf Vorgaben zurück
+- [x] Gelistete Adresse erzeugt beim ersten Login ein Konto; ungelistete bekommt nichts und wird protokolliert; kein Token ohne `sub`
+- [x] Identität ist `(provider, sub)`: geänderte Adresse erzeugt kein zweites Konto; unverifizierte Adresse bindet nichts; Adressen werden ohne Rücksicht auf Groß-/Kleinschreibung verglichen
+- [x] Administrator-Flag folgt der Allowlist bei jedem Login; Entfernen deaktiviert das Konto und beendet die Sitzung sofort; Herabstufen beendet die Sitzung sofort
+- [x] Microsoft: `tid` muss dem Tenant entsprechen, fremder Tenant wird abgewiesen, `common`/`organizations`/`consumers` sind schon bei der Konfiguration unzulässig
+- [x] Provider: primärer zuerst gelistet, Secret nie ausgegeben, primärer weder deaktivier- noch löschbar, belegter nicht löschbar, Wechsel des primären
+- [x] Allowlist: letzter Administrator geschützt; Doppel und ungültige Adressen 409/400; Normalisierung
+- [x] Konten werden nicht von Hand angelegt (405); Deaktivieren widerruft Sitzungen; Löschen lässt keine Freigaben zurück
+- [x] Gruppen, Freigaben an Benutzer und Gruppen, weiter gehendes Recht gewinnt; unbekanntes Mitglied ist ein Fehler; Löschen einer Gruppe nimmt ihre Freigaben mit
+- [x] Gruppen-Sync: Spiegel entstehen, Mitgliedschaften werden ersetzt, lokale und fremde Provider-Gruppen bleiben unberührt, Umbenennungen folgen, Namenskollision wird aufgelöst, Doppel in der Antwort sind harmlos
+- [x] Gruppen-Sync: Microsoft folgt `@odata.nextLink` und überspringt Verzeichnisrollen; Google fragt die eigene Adresse ab und folgt `nextPageToken`; Fehlerstatus und Netzwerkfehler sind ein `SyncFailed`
+- [x] Fehlgeschlagener Sync lässt den letzten Stand stehen, sperrt nicht aus und landet im Audit; nur Microsoft und Google mit gesetztem Schalter synchronisieren
+- [x] Einstellungen: Round-Trip, Wirkung ohne Neustart, Origin muss `https` sein, Redirect-URI folgt dem Origin
+- [x] Migration von 2.0.0 gegen eine befüllte Datenbank: Allowlist mit Administrator-Flags übernommen, Konto ohne Provider deaktiviert, Sitzungen geleert, `config.toml` importiert, Credential-Tabellen entfernt
+- [x] Schreiben mit gültiger Sperre und ETag; veralteter ETag ergibt 412, fehlende Sperre 409, fehlendes If-Match 428, zu groß 413 vor dem Lesen des Körpers
+- [x] Sperre: Zweiter bekommt sie nicht, erneutes Holen verlängert, Ablauf wird faul erkannt, Administrator kann brechen, Beacon gibt mit Token frei
 - [x] Atomares Schreiben: abgebrochener Schreibvorgang lässt die vorige Datei unversehrt, kein Rest im Verzeichnis
-- [x] Generationen bei jedem Schreibvorgang; Wiederherstellen erzeugt eine neue; Nummern werden nicht wiederverwendet
-- [x] Löschen einzeln, unterhalb einer Nummer und vollständig; aktuelle Datei bleibt
+- [x] Generationen bei jedem Schreibvorgang; Wiederherstellen erzeugt eine neue; Nummern werden nicht wiederverwendet; Löschen einzeln, unterhalb einer Nummer und vollständig; aktuelle Datei bleibt
+- [x] `export-vault` nach ID und Name, aktuelle Datei und Generation; unbekannt ergibt Fehlercode 1
 - [x] Injektion: genau zwei Änderungen, Datei auf dem Datenträger unverändert, Adapter vor dem Anwendungsskript, `/api/injection` zeigt den Block
-- [x] Weiterer Passkey nur mit starker, frischer Sitzung: gealterte Passkey-Sitzung und Passwort-Loopback-Sitzung werden abgewiesen, die frisch rotierte Sitzung nach der Erstregistrierung nicht
-- [x] Container: beide Ziele bauen, Server läuft unprivilegiert mit read-only Wurzeldateisystem, `config.toml` mit 0600
-- [ ] Anmeldung mit einem echten Passkey in Chrome, Firefox und Safari (die Testsuite nutzt einen selbst gebauten Authenticator)
-- [ ] OIDC-Anmeldung gegen Microsoft 365 und Google mit echten Zugangsdaten
-- [ ] Verhalten hinter dem Reverse Proxy der Zielumgebung, inklusive Loopback-Ausnahme
+- [x] Anmeldeseite zeigt nur Provider-Schaltflächen, kein Passwortfeld
+- [ ] OIDC-Anmeldung gegen Microsoft 365 und Google mit echten Zugangsdaten, einschließlich Gruppen-Sync (Google: ob `searchDirectGroups` für Nutzer ohne Admin-Rolle Ergebnisse liefert)
+- [ ] Container: beide Ziele bauen, Server läuft unprivilegiert mit read-only Wurzeldateisystem, `setup` als Einmal-Lauf schreibt in das Volume
+- [ ] Verhalten hinter dem Reverse Proxy der Zielumgebung
 
 ### 9.5 Auslieferung
 

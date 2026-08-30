@@ -2,11 +2,11 @@
 
 **A password manager in a single HTML file.** No installation, no dependencies — the vault is an encrypted file that belongs to you and that you store yourself. Double-click it and it works, with no server anywhere.
 
-> **Version 2.0.0** · **New: an optional server.** Accounts with passkeys, groups, vaults shared with a team, and an unlimited file history. The application file stays exactly the same — the service delivers it with two changes and otherwise only stores what the browser has already encrypted. It never sees a master password or a key.
+> **Version 2.1.0** · **The server signs you in through your identity provider.** Microsoft 365, Google or any OIDC provider; an allowlist per provider decides who gets in; groups can be mirrored from the provider. No passwords, no passkeys, no configuration file — two environment variables, everything else in the database. Vaults shared with a team and an unlimited file history as before. The application file stays exactly the same — the service delivers it with two changes and otherwise only stores what the browser has already encrypted. It never sees a master password or a key.
 >
 > The local file is unaffected and keeps its promise literally: its policy forbids *every* connection, and the file contains neither a URL nor a `fetch` call.
 >
-> **Still open, and only checkable by hand:** signing in with a real passkey in Chrome, Firefox and Safari; OIDC against Microsoft 365 and Google with real credentials; behaviour behind the reverse proxy of the target environment; the auto-lock timeout; keyboard-only operation; and the fallbacks without the File System Access API and without `BarcodeDetector`. The current state is a checklist in [docs/requirements.md](docs/requirements.md#9-abnahmekriterien).
+> **Still open, and only checkable by hand:** OIDC against Microsoft 365 and Google with real credentials, including group mirroring; behaviour behind the reverse proxy of the target environment; the auto-lock timeout; keyboard-only operation; and the fallbacks without the File System Access API and without `BarcodeDetector`. The current state is a checklist in [docs/requirements.md](docs/requirements.md#9-abnahmekriterien).
 
 ---
 
@@ -43,12 +43,12 @@ when asked for. See [The server variant](#the-server-variant).
 Or without Compose:
 
 ```bash
-docker build -t mmo-vault:2.0.0 .
+docker build -t mmo-vault:2.1.0 .
 docker run -d --name mmo-vault --restart unless-stopped \
   -p 127.0.0.1:4080:8080 \
   --read-only --tmpfs /tmp --cap-drop ALL \
   --security-opt no-new-privileges:true \
-  mmo-vault:2.0.0
+  mmo-vault:2.1.0
 ```
 
 Port and bind address can be set without editing compose.yaml:
@@ -78,7 +78,7 @@ docker compose up -d --build
 If you would rather not build on the server, transfer the finished image instead:
 
 ```bash
-docker save mmo-vault:2.0.0 | gzip | ssh server 'gunzip | docker load'
+docker save mmo-vault:2.1.0 | gzip | ssh server 'gunzip | docker load'
 ```
 
 **Starting after a reboot** comes from `restart: unless-stopped` in compose.yaml — but that only takes effect if the Docker service itself starts at boot:
@@ -135,8 +135,9 @@ Everything above works without any of this. The server exists for the case the
 single file cannot cover: **several people, one vault.**
 
 ```bash
-python mmo_vault.py setup     # accounts, database, the first administrator
-python mmo_vault.py start     # the service
+export MMO_VAULT_DIR=var                 # optional, this is the default
+python mmo_vault.py setup                # origin, identity provider, first administrators
+python mmo_vault.py start                # the service
 ```
 
 Or as a container, where the compose profile decides:
@@ -149,11 +150,20 @@ docker compose --profile server run --rm mmo-vault-server setup
 
 ### What it does
 
-- **Accounts with passkeys.** WebAuthn, phishing-resistant, no shared secret on
-  the server: it stores a public key and nothing else. Alternatively OIDC —
-  Microsoft 365, Google, or anything else with discovery, configurable per user
-  and per group.
-- **Groups and sharing.** A vault is shared with people or with groups, read or
+- **Sign-in through your identity provider.** Microsoft 365, Google, or any
+  provider with OIDC discovery (Keycloak, Authentik, …). The service keeps no
+  passwords, no passkeys and no second factor of its own — that is the
+  provider's job, together with its policies for MFA and device compliance.
+- **An allowlist decides who gets in.** Per provider, one line per e-mail
+  address, with an *administrator* flag. There is no self-registration: an
+  account comes into being on the first successful sign-in of a listed
+  address and is bound to the provider's stable subject from then on.
+  Removing the line disables the account and ends its sessions.
+- **Groups, local or mirrored.** Administrators manage local groups by hand.
+  For Microsoft and Google a switch per provider mirrors the person's own
+  groups at each sign-in — with their own token, no service account, no
+  directory-wide permission.
+- **Sharing.** A vault is shared with people or with groups, read or
   read-write; the wider permission wins.
 - **Unlimited file history.** Every save is kept. Restoring writes a *new*
   generation instead of rewinding, so the history stays gapless and the restore
@@ -169,6 +179,32 @@ It does not decrypt. The service stores blocks of ciphertext, checks that they
 are structurally a vault file, and hands them back. The master password is
 entered in the browser, the key is derived there, and neither ever leaves it.
 After clicking a vault in the list you enter one thing: the master password.
+
+### Configuration: two variables, then the database
+
+The service reads exactly two environment variables:
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `MMO_VAULT_DIR` | data directory: vault files and, by default, the SQLite database | `var/` next to `mmo_vault.py` (`/app/var` in the container) |
+| `MMO_VAULT_DATABASE_URL` | SQLAlchemy URL | `sqlite:///<MMO_VAULT_DIR>/mmo_vault.db` |
+
+Everything else — the public origin, the providers with their client secrets,
+the allowlist, session lifetimes, size limits — lives in the database. `setup`
+writes the initial state; from then on the administration at **`/admin`**
+changes it, and changes take effect without a restart. There is no
+configuration file to protect, back up or drift.
+
+### Setting up the provider
+
+At Microsoft or Google, register a web application with the redirect URI
+`https://<your-origin>/auth/oidc/<provider-name>/callback` — `setup` prints
+it. For Microsoft a concrete tenant is required; the open aliases `common`,
+`organizations` and `consumers` are refused, because an address is only
+trustworthy if *your* tenant administers it. Group mirroring needs the
+delegated permission `GroupMember.Read.All` (Microsoft) or the scope
+`cloud-identity.groups.readonly` (Google Workspace) granted to that
+application.
 
 ### The one change to the file
 
@@ -187,24 +223,27 @@ browser enforces it.
 > the server; confidentiality still rests on the master password alone. For the
 > highest bar, the local file remains the right answer.
 >
+> Whoever controls the identity provider can sign in as any listed address —
+> the service trusts the provider's word. That is the deliberate trade: one
+> place for identity, MFA and offboarding instead of a second set of
+> credentials to lose.
+>
 > And: everyone who can write to a shared vault knows the same master password.
 > Revoking a share takes away access to the server, not the knowledge. After
 > revoking, change the master password.
 
-### Signing in the first time
+### When the provider is down
 
-`setup` gives the administrator a password and nothing else — no TOTP, no QR
-code. That password can do exactly one thing: register a passkey. Everything
-else answers with 403 until it has happened, and afterwards the password is
-discarded rather than merely ignored.
+The vault files are plain NDJSON on disk, and `python mmo_vault.py export-vault
+<name>` prints one — the current state or any generation — to standard output.
+Save it, open it with the local file, enter the master password. The provider
+being unavailable keeps people out of the *service*, never out of their data.
 
-Lost the device? Backup codes come with the first passkey. Lost those too?
-`python mmo_vault.py enroll <account>` on the server opens a new window. There
-is no e-mail reset and no self-service form — whoever has the server has
-everything anyway, and that is an honest boundary rather than a hole.
+Group changes at the provider show up at the next sign-in, not before; someone
+removed from a group keeps access until their session ends (at most
+`session_hours`, default 12). Administrators can revoke sessions at any time.
 
-The administration lives at **`/admin`**; the root address serves the vault
-application.
+---
 
 ## What's inside
 
@@ -308,7 +347,7 @@ Full specification: [docs/requirements.md](docs/requirements.md#5-dateiformat).
 
 ```
 mmo_vault/
-├── mmo_vault.py             CLI entry point: setup, start, enroll
+├── mmo_vault.py             CLI entry point: setup, start, export-vault
 ├── mmo_vault/
 │   ├── public_html/
 │   │   └── mmo_vault.html   The complete application (= served directory)
@@ -319,7 +358,8 @@ mmo_vault/
 ├── docs/
 │   ├── requirements.md      Requirements, file format, threat model, acceptance
 │   ├── plan_versioning.md   Design of the record versioning (2.0.0)
-│   └── plan_server.md       Design of the server variant (2.0.0)
+│   ├── plan_server.md       Design of the server variant (2.0.0)
+│   └── plan_oidc_only.md    Identity from the provider, config in the DB (2.1.0)
 ├── tests/                   pytest, for the server only
 ├── Dockerfile               Two targets: static and server
 ├── compose.yaml

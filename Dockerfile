@@ -4,20 +4,21 @@
 #
 #   static   nginx plus the single HTML file. No Python, no database, no state.
 #            This is the whole application: a file the browser opens.
-#   server   the FastAPI service. Accounts, passkeys, shared vaults, history -
-#            and it serves the same HTML file, with the two changes from
-#            injection.py.
+#   server   the FastAPI service. Sign-in through an identity provider, an
+#            allowlist, groups, shared vaults, history - and it serves the same
+#            HTML file, with the two changes from injection.py.
 #
-#   docker build --target static -t mmo-vault:2.0.0 .
-#   docker build --target server -t mmo-vault-server:2.0.0 .
+#   docker build --target static -t mmo-vault:2.1.0 .
+#   docker build --target server -t mmo-vault-server:2.1.0 .
 #
 # Or through compose, where the profile picks the target:
 #   docker compose up -d                     -> static
 #   docker compose --profile server up -d    -> server
 #
 # IMPORTANT for both: over any address other than localhost there MUST be TLS in
-# front. crypto.subtle only exists in a secure context, and passkeys need one
-# too - over http:// on a LAN address neither works. Details in the README.
+# front. crypto.subtle only exists in a secure context, and the identity
+# providers accept only https redirect URIs - over http:// on a LAN address
+# neither works. Details in the README.
 
 
 # =============================================================================
@@ -27,7 +28,7 @@ FROM nginx:1.27-alpine AS static
 
 LABEL org.opencontainers.image.title="MMO Vault" \
       org.opencontainers.image.description="Lokaler Passwortmanager als einzelne HTML-Datei" \
-      org.opencontainers.image.version="2.0.0" \
+      org.opencontainers.image.version="2.1.0" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 # Replaces the main configuration entirely. The image's default server expects
@@ -74,8 +75,8 @@ RUN python -m venv /venv \
 FROM python:3.13-slim AS server
 
 LABEL org.opencontainers.image.title="MMO Vault Server" \
-      org.opencontainers.image.description="Serverbetrieb mit Passkeys, Gruppen und Vault-Historie" \
-      org.opencontainers.image.version="2.0.0" \
+      org.opencontainers.image.description="Serverbetrieb mit OIDC-Anmeldung, Gruppen und Vault-Historie" \
+      org.opencontainers.image.version="2.1.0" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 COPY --from=builder /venv /venv
@@ -93,16 +94,22 @@ RUN mkdir -p /app/var/vaults \
 # owns the volume on the host, and a name says nothing about that.
 USER 10001:10001
 
+# The only two environment variables the service reads. Everything else -
+# origin, providers, limits - lives in the database and is set by `setup`
+# once and by the administration afterwards.
 ENV PATH="/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    MMO_VAULT_DIR=/app/var \
+    MMO_VAULT_DATABASE_URL=sqlite:////app/var/mmo_vault.db
 
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health').status==200 else 1)"
 
-# Setup runs as its own one-off, not on every start:
-#   docker compose run --rm mmo-vault-server setup
+# Setup runs as its own one-off, not on every start - it writes the origin,
+# the primary provider and the first administrators into the database:
+#   docker compose --profile server run --rm mmo-vault-server setup
 ENTRYPOINT ["python", "/app/mmo_vault.py"]
 CMD ["start", "--host", "0.0.0.0"]

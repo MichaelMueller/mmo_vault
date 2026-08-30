@@ -6,13 +6,14 @@
 # Der statische Betrieb ist die Anwendung selbst: eine HTML-Datei, ausgeliefert
 # von nginx. Kein Python, keine Datenbank, kein Zustand.
 #
-# Der Server kommt dazu, wenn Konten, Passkeys, geteilte Vaults und eine
-# Dateihistorie gebraucht werden. Er liefert dieselbe HTML-Datei aus, mit den
-# zwei Änderungen aus injection.py.
+# Der Server kommt dazu, wenn Anmeldung über einen Identity Provider, Gruppen,
+# geteilte Vaults und eine Dateihistorie gebraucht werden. Er liefert dieselbe
+# HTML-Datei aus, mit den zwei Änderungen aus injection.py.
 #
 # Beide sind als Backend hinter einem Reverse Proxy gedacht, der TLS terminiert.
 # Ohne HTTPS ist die Anwendung nur über localhost benutzbar: crypto.subtle
-# existiert außerhalb eines Secure Context nicht, und Passkeys erst recht nicht.
+# existiert außerhalb eines Secure Context nicht, und die Identity Provider
+# akzeptieren nur https-Redirect-URIs.
 #
 # Abweichender Port oder Bind-Adresse ohne Änderung dieser Datei:
 #   VAULT_PORT=4080 VAULT_BIND=127.0.0.1 docker compose up -d
@@ -25,7 +26,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: static
-    image: mmo-vault:2.0.0
+    image: mmo-vault:2.1.0
     container_name: mmo-vault
     # Startet nach einem Reboot automatisch wieder — vorausgesetzt, der
     # Docker-Dienst selbst ist aktiviert (systemctl enable docker).
@@ -70,13 +71,23 @@ services:
       context: .
       dockerfile: Dockerfile
       target: server
-    image: mmo-vault-server:2.0.0
+    image: mmo-vault-server:2.1.0
     container_name: mmo-vault-server
     restart: unless-stopped
 
     # Erste Inbetriebnahme — einmalig, vor dem ersten Start:
     #   docker compose --profile server run --rm mmo-vault-server setup
-    # Danach steht in var/config.toml, was der Dienst braucht.
+    # Fragt Origin, den primären Identity Provider (Microsoft, Google oder
+    # generisch) und die ersten Administratoren ab und schreibt alles in die
+    # Datenbank. Es gibt keine Konfigurationsdatei; alles Weitere passiert
+    # in der Verwaltung unter /admin.
+    #
+    # Die einzigen Umgebungsvariablen, die der Dienst liest. Vorgaben stehen
+    # im Dockerfile; hier nur überschreiben, wenn z. B. eine externe
+    # Datenbank angebunden wird.
+    environment:
+      MMO_VAULT_DIR: /app/var
+      MMO_VAULT_DATABASE_URL: ${MMO_VAULT_DATABASE_URL:-sqlite:////app/var/mmo_vault.db}
 
     ports:
       - "${VAULT_BIND:-127.0.0.1}:${VAULT_SERVER_PORT:-4081}:8000"
@@ -85,8 +96,9 @@ services:
     #   - proxy
 
     volumes:
-      # Der einzige Ort, an dem geschrieben wird: Datenbank, Konfiguration und
-      # die Vault-Dateien samt Generationen.
+      # Der einzige Ort, an dem geschrieben wird: Datenbank (samt aller
+      # Einstellungen und Provider-Secrets) und die Vault-Dateien samt
+      # Generationen.
       - vault-data:/app/var
 
     read_only: true
@@ -97,10 +109,9 @@ services:
     security_opt:
       - no-new-privileges:true
 
-    # Deutlich mehr als beim statischen Betrieb: Python, SQLAlchemy und die
-    # Argon2-Prüfung brauchen Platz. Argon2 ist absichtlich speicherhungrig —
-    # ein zu knappes Limit lässt die Anmeldung scheitern, nicht bloß bremsen.
-    mem_limit: 512m
+    # Deutlich mehr als beim statischen Betrieb: Python, SQLAlchemy und der
+    # Upload einer Vault-Datei bis zur konfigurierten Größe brauchen Platz.
+    mem_limit: 256m
     pids_limit: 256
 
 volumes:

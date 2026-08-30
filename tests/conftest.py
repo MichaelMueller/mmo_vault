@@ -120,3 +120,9 @@ def user_client(app, email: str, *, is_admin: bool = False) -> TestClient:
     client.__enter__()
     sign_in(client, email)
     return client
+
+
+@pytest.fixture
+def anyio_backend():
+    """Async tests run on asyncio only - trio is not installed."""
+    return "asyncio"

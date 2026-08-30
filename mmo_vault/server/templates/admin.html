@@ -272,7 +272,9 @@ async function loadAll(){
   groups.forEach(group => {
     const row = document.createElement('tr');
     cell(row, group.name).title = group.description || '';
-    cell(row, group.source === 'local' ? 'lokal' : 'Anbieter ' + (group.provider || '?'));
+    cell(row, group.source === 'local' ? 'lokal'
+      : 'Anbieter ' + (group.provider || '?') + (group.frozen ? ' (eingefroren)' : ''))
+      .title = group.frozen ? 'Der Anbieter synchronisiert nicht mehr; die Mitgliedschaft ist der letzte bekannte Stand.' : '';
     cell(row, group.members.join(', ') || '—');
     cell(row, group.source === 'local' ? '—' : when(group.last_synced_at));
     const actions = [];

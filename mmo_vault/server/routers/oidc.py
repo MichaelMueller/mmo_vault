@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session as DbSession
 
-from .. import deps, providers, sessions
+from .. import deps, providers, sessions, sync
 from ..config import Config
 from ..models import Allowlist, AuditLog, Provider, User, utcnow
 
@@ -95,6 +95,9 @@ async def callback(
             detail="this account is not enabled for the service",
         )
 
+    if sync.supports(provider):
+        await sync_groups_on_login(db, provider, user, token.get("access_token") or "")
+
     # The provider vouched for the sign-in; the service asks for nothing more.
     session = sessions.create(db, config, user, request=request)
     response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
@@ -164,3 +167,22 @@ def admit(db: DbSession, provider: Provider, claims: dict) -> User | None:
     db.flush()
     _audit(db, "account_created", user.name, f"{provider.name}: first sign-in of {email}", actor=user)
     return user
+
+
+async def sync_groups_on_login(db: DbSession, provider: Provider, user: User, access_token: str,
+                               transport=None) -> None:
+    """Mirrors the person's provider groups - and swallows failure on purpose.
+
+    A provider that is slow or misconfigured must not turn into a locked door;
+    the last known memberships stay, and the audit log says why.
+    """
+    try:
+        if not access_token:
+            raise sync.SyncFailed("no access token in the response")
+        fetched = await sync.fetch_groups(provider, access_token, user.email, transport=transport)
+        count = sync.apply(db, provider, user, fetched)
+        _audit(db, "group_sync", user.name, f"{provider.name}: {count} groups", actor=user)
+    except sync.SyncFailed as err:
+        # Nothing has been written at this point: the fetch is the only thing
+        # that can fail, and apply() runs only after it succeeded.
+        _audit(db, "group_sync_failed", user.name, f"{provider.name}: {err}", actor=user)

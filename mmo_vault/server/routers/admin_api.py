@@ -168,6 +168,10 @@ def _group_json(db: DbSession, group: Group) -> dict:
         "provider": provider.name if provider else None,
         "external_id": group.external_id,
         "last_synced_at": group.last_synced_at.isoformat() if group.last_synced_at else None,
+        # A mirror whose provider no longer syncs (switch off, provider disabled
+        # or gone) keeps its last membership and is marked as frozen.
+        "frozen": group.source == "provider"
+        and (provider is None or not provider.enabled or not provider.sync_groups),
         "members": sorted(u.name for u in group.members),
     }
 

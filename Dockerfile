@@ -61,10 +61,10 @@ ENV PATH="/venv/bin:$PATH" \
     MMO_VAULT_DIR=/app/var \
     MMO_VAULT_DATABASE_URL=sqlite:////app/var/mmo_vault.db
 
-EXPOSE 8000
+EXPOSE 4080
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health').status==200 else 1)"
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:4080/api/health').status==200 else 1)"
 
 # Setup runs as its own one-off, not on every start - it writes the origin,
 # the primary provider and the first administrators into the database:

@@ -46,6 +46,8 @@ Serving the file over the network needs **HTTPS**: `crypto.subtle` only exists i
 
 The server adds sign-in through an identity provider (Microsoft 365, Google, or any OIDC provider with discovery), an allowlist per provider that decides who gets in, groups — managed locally or mirrored from the provider at sign-in — vaults shared with people or groups, a file lock plus ETag against lost writes, and an unlimited history of every save. It serves the application itself; there is no separate web server.
 
+**It needs a reverse proxy in front of it, terminating TLS.** That is a precondition, not a recommendation: the service speaks plain HTTP and binds to loopback, browsers only offer `crypto.subtle` in a secure context, and the identity providers accept `https` redirect URIs only. Without HTTPS the vault can neither be created nor unlocked from anywhere but `localhost`. Whichever proxy you already run — nginx, Caddy, Traefik, Apache — is the right one; see [Reverse proxy](#reverse-proxy) below.
+
 It reads exactly two environment variables; everything else lives in the database and is changed at `/admin` without a restart:
 
 | Variable | Meaning | Default |
@@ -59,7 +61,7 @@ It reads exactly two environment variables; everything else lives in the databas
 
 ```bash
 docker compose run --rm mmo-vault-server setup
-docker compose up -d --build                     # → http://127.0.0.1:4081/
+docker compose up -d --build                     # → http://127.0.0.1:4080/
 ```
 
 Port and bind address come from `VAULT_PORT` and `VAULT_BIND`.
@@ -73,7 +75,7 @@ docker volume create vault-data
 docker run --rm -it -v vault-data:/app/var mmo-vault-server:2.1.0 setup
 
 docker run -d --name mmo-vault-server --restart unless-stopped \
-  -p 127.0.0.1:4081:8000 -v vault-data:/app/var \
+  -p 127.0.0.1:4080:4080 -v vault-data:/app/var \
   --read-only --tmpfs /tmp --cap-drop ALL \
   --security-opt no-new-privileges:true \
   mmo-vault-server:2.1.0
@@ -81,7 +83,7 @@ docker run -d --name mmo-vault-server --restart unless-stopped \
 
 ### Inside an existing compose stack
 
-One service to paste in, without publishing a port — the reverse proxy in the same network reaches it at `http://vault:8000`:
+One service to paste in, without publishing a port — the reverse proxy in the same network reaches it at `http://vault:4080`:
 
 ```yaml
 services:
@@ -106,9 +108,14 @@ Run the one-off setup with `docker compose run --rm vault setup`.
 
 ### Reverse proxy
 
-The proxy terminates TLS and forwards to port 8000. **HSTS** belongs there, as does `X-Forwarded-For` if real client addresses should show up in the log — the service trusts forwarding headers only from the addresses configured in `forwarded_allow_ips`. Everything else (`frame-ancestors 'none'`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`) the service sets itself.
+The proxy terminates TLS and forwards to port 4080. Two things belong there rather than in the service:
 
-If you publish a port instead of sharing a network, bind it to loopback: with `-p 4081:8000` Docker writes its own iptables rules **ahead of** ufw and firewalld, and the port is reachable from the network although the firewall shows it as blocked. `127.0.0.1:4081:8000` never creates that rule.
+- **HSTS** (`Strict-Transport-Security`) — a response header that tells the browser to use HTTPS for this domain for the given period, without asking. After the first visit an `http://` link or a typed address is upgraded by the browser itself, so an attacker on the network never gets an unencrypted request to intercept. It has to be set by whatever terminates TLS, because it only counts on a connection that was already encrypted. Start with a short `max-age` and raise it once the certificate renewal is proven — while it is in force, the domain cannot be served over plain HTTP.
+- **`X-Forwarded-For`**, if real client addresses should show up in the log. The service trusts forwarding headers only from the addresses in `forwarded_allow_ips`.
+
+Everything else (`frame-ancestors 'none'`, `nosniff`, `Referrer-Policy`, `Cross-Origin-Opener-Policy`, `Permissions-Policy`) the service sets itself.
+
+If you publish a port instead of sharing a Docker network, bind it to loopback: with `-p 4080:4080` Docker writes its own iptables rules **ahead of** ufw and firewalld, and the port is reachable from the network although the firewall shows it as blocked. `127.0.0.1:4080:4080` never creates that rule.
 
 ### Registering the provider
 

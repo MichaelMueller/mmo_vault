@@ -1,7 +1,7 @@
 # MMO Vault — der Serverbetrieb.
 #
 #   docker compose run --rm mmo-vault-server setup   → einmalig einrichten
-#   docker compose up -d --build                     → http://127.0.0.1:4081/
+#   docker compose up -d --build                     → http://127.0.0.1:4080/
 #
 # Die andere Betriebsart braucht kein Compose und keinen Container: die Datei
 # mmo_vault/public_html/mmo_vault.html im Browser öffnen, fertig.
@@ -12,7 +12,7 @@
 # nur https-Redirect-URIs.
 #
 # Abweichender Port oder Bind-Adresse ohne Änderung dieser Datei:
-#   VAULT_PORT=4081 VAULT_BIND=127.0.0.1 docker compose up -d
+#   VAULT_PORT=4080 VAULT_BIND=127.0.0.1 docker compose up -d
 # oder dauerhaft in einer .env-Datei daneben.
 
 services:
@@ -43,15 +43,15 @@ services:
       MMO_VAULT_DATABASE_URL: ${MMO_VAULT_DATABASE_URL:-sqlite:////app/var/mmo_vault.db}
 
     # Die Bind-Adresse 127.0.0.1 ist hier die eigentliche Zugriffsbeschränkung.
-    # WICHTIG: Ohne sie — also bei "4081:8000" — trägt Docker eigene
+    # WICHTIG: Ohne sie — also bei "4080:4080" — trägt Docker eigene
     # iptables-Regeln VOR die Ketten von ufw/firewalld ein. Der Port wäre dann
     # aus dem Netz erreichbar, obwohl die Firewall ihn scheinbar sperrt.
     # Läuft der Reverse Proxy in einem eigenen Container, kann er die
     # Host-Loopback-Adresse nicht erreichen: dann diese Freigabe ganz entfernen,
     # das Proxy-Netz unten einkommentieren und dort auf
-    # http://mmo-vault-server:8000 zeigen — ohne jede Portveröffentlichung.
+    # http://mmo-vault-server:4080 zeigen — ohne jede Portveröffentlichung.
     ports:
-      - "${VAULT_BIND:-127.0.0.1}:${VAULT_PORT:-4081}:8000"
+      - "${VAULT_BIND:-127.0.0.1}:${VAULT_PORT:-4080}:4080"
 
     # networks:
     #   - proxy

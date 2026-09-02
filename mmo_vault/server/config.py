@@ -26,7 +26,9 @@ class ServerConfig:
     """Read once by `start`, handed to uvicorn."""
 
     host: str = "127.0.0.1"
-    port: int = 8000
+    # The same port inside the container and on the host, so there is one
+    # number to remember. 8000 would only say "a Python service lives here".
+    port: int = 4080
     workers: int = 1
     # Only when a reverse proxy really sits in front. It makes the service
     # trust forwarding headers from the addresses below.

@@ -76,6 +76,31 @@ def create_app(database_url: str | None = None) -> FastAPI:
         max_age=600,
     )
 
+    @app.middleware("http")
+    async def security_headers(request, call_next):
+        """The headers that a <meta> tag cannot deliver.
+
+        frame-ancestors is the reason this exists: inside a meta tag the
+        browser ignores the directive, so it can only be enforced from here -
+        and without it the delivered application could be framed. The rest of
+        the policy stays where it is, in the meta tag of the application and of
+        the service's own pages; a second full policy here would apply
+        cumulatively and could only ever narrow it by accident.
+        """
+        response = await call_next(request)
+        response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+        # Only what the application demonstrably does not use. clipboard-write
+        # stays allowed - copying a password is the whole point.
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "geolocation=(), camera=(), microphone=(), usb=(), payment=(), interest-cohort=()",
+        )
+        return response
+
     app.include_router(auth.router)
     app.include_router(oidc.router)
     app.include_router(admin_api.router)

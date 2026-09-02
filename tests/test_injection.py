@@ -115,3 +115,17 @@ def test_the_beacon_releases_a_lock(admin):
     assert admin.post(
         f"/api/vaults/{vault_id}/lock/release-beacon?token=falsch"
     ).json()["released"] is False
+
+
+def test_the_service_sets_the_headers_a_meta_tag_cannot(admin, anonymous):
+    """frame-ancestors is the reason: inside a <meta> tag the browser ignores
+    it, so only the service can enforce it - and without it the delivered
+    application could be framed."""
+    for response in (admin.get("/"), admin.get("/admin"), anonymous.get("/login")):
+        assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+        assert response.headers["x-frame-options"] == "DENY"
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["referrer-policy"] == "no-referrer"
+        assert response.headers["cross-origin-opener-policy"] == "same-origin"
+        # Copying a password has to keep working.
+        assert "clipboard" not in response.headers["permissions-policy"]

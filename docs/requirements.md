@@ -15,7 +15,7 @@ Seit 2.0.0 gibt es **zwei Betriebsarten**:
 
 | Betriebsart | Was |
 |---|---|
-| **Lokal** | Die Datei per Doppelklick im Browser. Ohne Server, ohne Installation, ohne Netzwerkzugriff. |
+| **Lokal** | Die Datei per Doppelklick im Browser. Ohne Server, ohne Installation, ohne Netzwerkzugriff. Ein Auslieferungs-Webserver ist keine eigene Betriebsart: wer die Datei über das Netz bereitstellt, liefert dieselbe Datei aus, die auch lokal läuft. |
 | **Server** | Ein FastAPI-Dienst mit Anmeldung über einen Identity Provider (OIDC), Allowlist, Gruppen, geteilten Vaults und Dateihistorie. Er liefert dieselbe HTML-Datei aus und legt die Vault-Dateien ab. Seit 2.1.0 ohne eigene Benutzerverwaltung: Identität kommt vom Provider, Konfiguration liegt in der Datenbank. |
 
 Der Server ist **Ablage und Zugriffskontrolle**, nicht Kryptografie. Verschlüsselt und entschlüsselt wird ausschließlich im Browser; Master-Passwort und Schlüssel erreichen ihn nie.
@@ -124,7 +124,7 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 | SEC-27 | Wird die Anwendung über einen Webserver ausgeliefert, MUSS die Übertragung per TLS erfolgen. Browser stellen `crypto.subtle` nur in einem *Secure Context* bereit; über `http://` auf einer anderen Adresse als `localhost` fehlt die Web-Crypto-API vollständig. |
 | SEC-28 | Fehlt der Secure Context, MUSS die Anwendung dies beim Laden erkennen, verständlich melden und die Bedienelemente zum Anlegen und Entsperren sperren — statt später mit einem Laufzeitfehler abzubrechen. |
 | SEC-29 | Ein ausliefernder Server MUSS `frame-ancestors 'none'` als HTTP-Header setzen. Im `<meta>`-Tag wird die Direktive vom Browser ignoriert und ist dort nicht durchsetzbar. |
-| SEC-30 | Ein Container-Abbild DARF nur das Auslieferverzeichnis und die Serverkonfiguration enthalten — keinen Quellcode, keine Dokumentation und unter keinen Umständen eine Vault-Datei. |
+| SEC-30 | Ein Container-Abbild DARF keine Dokumentation, keine Tests, keine Konfiguration mit Geheimnissen, keine Datenbank und unter keinen Umständen eine Vault-Datei enthalten. Der Dienstcode gehört hinein, das Datenverzeichnis kommt als Volume dazu. |
 
 ### 3.4a Serverbetrieb: Anmeldung und Zugriff
 
@@ -473,9 +473,9 @@ erkennbar.
 | NFR-05 | Die TOTP-Anzeige DARF ein HMAC je Eintrag und Periode nicht überschreiten; die Sekundenanzeige darf keine Kryptooperation auslösen. |
 | NFR-06 | Der Quelltext MUSS deutschsprachig kommentiert sein, mit Schwerpunkt auf der Begründung nicht offensichtlicher Entscheidungen. |
 | NFR-07 | Neue Eintragstypen MÜSSEN durch Ergänzen von `RECORD_TYPES` und der zugehörigen Übersetzungsschlüssel hinzufügbar sein, ohne Filter-, Dialog- oder Badge-Logik anzufassen. |
-| NFR-08 | Die Auslieferung als Container MUSS ohne Build-Schritt auskommen und ausschließlich aus statischem Dateiversand bestehen. Das Auslieferverzeichnis ist `mmo_vault/public_html/`, der Index `mmo_vault.html`. |
+| NFR-08 | Die Anwendungsdatei MUSS ohne Build-Schritt auskommen: `mmo_vault/public_html/mmo_vault.html` ist zugleich Quelle und Auslieferung. Im Serverbetrieb liefert der Dienst genau diese Datei aus; einen separaten Webserver gibt es nicht. |
 | NFR-09 | Der Container MUSS als unprivilegierter Benutzer auf einem Port oberhalb 1024 laufen und mit read-only Wurzeldateisystem sowie ohne Capabilities startfähig sein. |
-| NFR-10 | Die Anwendungsdatei SOLL mit `Cache-Control: no-cache` ausgeliefert werden, damit Anwender eine neue Version unmittelbar erhalten. Revalidierung per ETag ist erwünscht, dauerhaftes Caching nicht. |
+| NFR-10 | Die ausgelieferte Anwendung MUSS `Cache-Control: no-store` tragen. Sie enthält den Adapter der laufenden Sitzung; eine zwischengespeicherte Kopie zeigt auf eine Sitzung, die es nicht mehr gibt. |
 
 ---
 
@@ -642,7 +642,6 @@ Abgehakte Punkte sind nachweisbar geprüft — die Krypto-, Datenintegritäts-, 
 - [x] Injektion: genau zwei Änderungen, Datei auf dem Datenträger unverändert, Adapter vor dem Anwendungsskript, `/api/injection` zeigt den Block
 - [x] Anmeldeseite zeigt nur Provider-Schaltflächen, kein Passwortfeld
 - [ ] OIDC-Anmeldung gegen Microsoft 365 und Google mit echten Zugangsdaten, einschließlich Gruppen-Sync (Google: ob `searchDirectGroups` für Nutzer ohne Admin-Rolle Ergebnisse liefert)
-- [ ] Container: beide Ziele bauen, Server läuft unprivilegiert mit read-only Wurzeldateisystem, `setup` als Einmal-Lauf schreibt in das Volume
 - [ ] Verhalten hinter dem Reverse Proxy der Zielumgebung
 
 ### 9.5 Auslieferung
@@ -655,19 +654,14 @@ Abgehakte Punkte sind nachweisbar geprüft — die Krypto-, Datenintegritäts-, 
 
 ### 9.6 Container-Auslieferung
 
-- [x] `docker build` läuft fehlerfrei durch
-- [x] `nginx -t` bestätigt die Konfiguration ohne Warnungen
-- [x] Aufruf von `http://localhost:8080/` liefert `mmo_vault.html` ohne Pfadangabe, byteidentisch zur Quelldatei
-- [x] Auslieferverzeichnis enthält ausschließlich `mmo_vault.html`, Verzeichnis 755 / Datei 644
-- [x] Kein Quellcode, keine Dokumentation, keine Vault-Datei und keine nginx-Willkommensseite im Abbild
-- [x] Container startet mit `read_only: true`, `cap_drop: ALL` und `no-new-privileges`; Healthcheck wird `healthy`; Prozess läuft als uid 101
-- [x] Antwort trägt `Content-Security-Policy` mit `frame-ancestors 'none'`, dazu `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Cross-Origin-Opener-Policy` und `Permissions-Policy`
-- [x] `Cache-Control: no-cache` mit funktionierender ETag-Revalidierung (zweiter Aufruf → 304)
-- [x] Nur GET und HEAD werden bedient; POST und PUT → 405
-- [x] `/index.html`, `/50x.html` und Pfad-Traversal → 404; `/favicon.ico` → 204 ohne Logeintrag
-- [x] Anlegen, Eintrag mit generiertem Passwort und QR-2FA, Speichern-Roundtrip und Sperren funktionieren über den Container
-- [x] Aufruf über einen Nicht-localhost-Hostnamen ohne TLS zeigt den Secure-Context-Hinweis statt einer scheinbar funktionierenden Oberfläche
-- [x] Security-Header gehen unverändert durch einen TLS-terminierenden Reverse Proxy; Inhalt bleibt byteidentisch
+- [x] Antwort trägt `Content-Security-Policy` mit `frame-ancestors 'none'`, dazu `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Cross-Origin-Opener-Policy` und `Permissions-Policy`; `clipboard-write` bleibt erlaubt
+- [x] Die ausgelieferte Anwendung trägt `Cache-Control: no-store`
+- [ ] `docker build` läuft fehlerfrei durch; das Abbild enthält keine Dokumentation, keine Tests und keine Vault-Datei
+- [ ] Container startet mit `read_only: true`, `cap_drop: ALL` und `no-new-privileges`; Healthcheck wird `healthy`; Prozess läuft als uid 10001
+- [ ] `setup` als Einmal-Lauf schreibt in das Volume; ein anschließender Start findet die Konfiguration vor
+- [ ] Anlegen, Eintrag mit generiertem Passwort und QR-2FA, Speichern-Roundtrip und Sperren funktionieren über den Container
+- [ ] Aufruf über einen Nicht-localhost-Hostnamen ohne TLS zeigt den Secure-Context-Hinweis statt einer scheinbar funktionierenden Oberfläche
+- [ ] Security-Header gehen unverändert durch einen TLS-terminierenden Reverse Proxy
 - [ ] Prüfung mit dem tatsächlich eingesetzten Reverse Proxy der Zielumgebung (HSTS und `X-Forwarded-For` liegen dort)
 
 ---

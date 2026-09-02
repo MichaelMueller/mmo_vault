@@ -1,82 +1,35 @@
-# MMO Vault — zwei Betriebsarten, ein Compose.
+# MMO Vault — der Serverbetrieb.
 #
-#   docker compose up -d --build                    → statisch, http://127.0.0.1:4080/
-#   docker compose --profile server up -d --build   → Server, http://127.0.0.1:4081/
+#   docker compose run --rm mmo-vault-server setup   → einmalig einrichten
+#   docker compose up -d --build                     → http://127.0.0.1:4081/
 #
-# Der statische Betrieb ist die Anwendung selbst: eine HTML-Datei, ausgeliefert
-# von nginx. Kein Python, keine Datenbank, kein Zustand.
+# Die andere Betriebsart braucht kein Compose und keinen Container: die Datei
+# mmo_vault/public_html/mmo_vault.html im Browser öffnen, fertig.
 #
-# Der Server kommt dazu, wenn Anmeldung über einen Identity Provider, Gruppen,
-# geteilte Vaults und eine Dateihistorie gebraucht werden. Er liefert dieselbe
-# HTML-Datei aus, mit den zwei Änderungen aus injection.py.
-#
-# Beide sind als Backend hinter einem Reverse Proxy gedacht, der TLS terminiert.
-# Ohne HTTPS ist die Anwendung nur über localhost benutzbar: crypto.subtle
-# existiert außerhalb eines Secure Context nicht, und die Identity Provider
-# akzeptieren nur https-Redirect-URIs.
+# Gedacht als Backend hinter einem Reverse Proxy, der TLS terminiert. Ohne
+# HTTPS ist die Anwendung nur über localhost benutzbar: crypto.subtle existiert
+# außerhalb eines Secure Context nicht, und die Identity Provider akzeptieren
+# nur https-Redirect-URIs.
 #
 # Abweichender Port oder Bind-Adresse ohne Änderung dieser Datei:
-#   VAULT_PORT=4080 VAULT_BIND=127.0.0.1 docker compose up -d
+#   VAULT_PORT=4081 VAULT_BIND=127.0.0.1 docker compose up -d
 # oder dauerhaft in einer .env-Datei daneben.
 
 services:
-  # ---------------------------------------------------------------- statisch
-  mmo-vault:
+  mmo-vault-server:
     build:
       context: .
       dockerfile: Dockerfile
-      target: static
-    image: mmo-vault:2.1.0
-    container_name: mmo-vault
+    image: mmo-vault-server:2.1.0
+    container_name: mmo-vault-server
     # Startet nach einem Reboot automatisch wieder — vorausgesetzt, der
     # Docker-Dienst selbst ist aktiviert (systemctl enable docker).
     # "unless-stopped" statt "always": ein bewusst gestoppter Container bleibt
     # nach dem Neustart gestoppt.
     restart: unless-stopped
 
-    # Die Bind-Adresse 127.0.0.1 ist hier die eigentliche Zugriffsbeschränkung.
-    # WICHTIG: Ohne sie — also bei "4080:8080" — trägt Docker eigene
-    # iptables-Regeln VOR die Ketten von ufw/firewalld ein. Der Port wäre dann
-    # aus dem Netz erreichbar, obwohl die Firewall ihn scheinbar sperrt.
-    # Läuft der Reverse Proxy in einem eigenen Container, kann er die
-    # Host-Loopback-Adresse nicht erreichen: dann diese Freigabe ganz entfernen,
-    # das Proxy-Netz unten einkommentieren und dort auf http://mmo-vault:8080
-    # zeigen — ohne jede Portveröffentlichung.
-    ports:
-      - "${VAULT_BIND:-127.0.0.1}:${VAULT_PORT:-4080}:8080"
-
-    # networks:
-    #   - proxy
-
-    # Härtung: Der Container liefert eine unveränderliche Datei aus und braucht
-    # dafür weder Schreibrechte im Wurzeldateisystem noch Capabilities.
-    read_only: true
-    tmpfs:
-      - /tmp
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-
-    # Statischer Dateiserver für ein Dokument — mehr braucht es nicht.
-    mem_limit: 64m
-    pids_limit: 64
-
-  # ------------------------------------------------------------------ Server
-  mmo-vault-server:
-    # Ohne "--profile server" existiert dieser Dienst nicht. Der statische
-    # Betrieb bleibt damit genau das, was er vorher war.
-    profiles: [server]
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: server
-    image: mmo-vault-server:2.1.0
-    container_name: mmo-vault-server
-    restart: unless-stopped
-
     # Erste Inbetriebnahme — einmalig, vor dem ersten Start:
-    #   docker compose --profile server run --rm mmo-vault-server setup
+    #   docker compose run --rm mmo-vault-server setup
     # Fragt Origin, den primären Identity Provider (Microsoft, Google oder
     # generisch) und die ersten Administratoren ab und schreibt alles in die
     # Datenbank. Es gibt keine Konfigurationsdatei; alles Weitere passiert
@@ -89,8 +42,16 @@ services:
       MMO_VAULT_DIR: /app/var
       MMO_VAULT_DATABASE_URL: ${MMO_VAULT_DATABASE_URL:-sqlite:////app/var/mmo_vault.db}
 
+    # Die Bind-Adresse 127.0.0.1 ist hier die eigentliche Zugriffsbeschränkung.
+    # WICHTIG: Ohne sie — also bei "4081:8000" — trägt Docker eigene
+    # iptables-Regeln VOR die Ketten von ufw/firewalld ein. Der Port wäre dann
+    # aus dem Netz erreichbar, obwohl die Firewall ihn scheinbar sperrt.
+    # Läuft der Reverse Proxy in einem eigenen Container, kann er die
+    # Host-Loopback-Adresse nicht erreichen: dann diese Freigabe ganz entfernen,
+    # das Proxy-Netz unten einkommentieren und dort auf
+    # http://mmo-vault-server:8000 zeigen — ohne jede Portveröffentlichung.
     ports:
-      - "${VAULT_BIND:-127.0.0.1}:${VAULT_SERVER_PORT:-4081}:8000"
+      - "${VAULT_BIND:-127.0.0.1}:${VAULT_PORT:-4081}:8000"
 
     # networks:
     #   - proxy
@@ -101,6 +62,8 @@ services:
       # Generationen.
       - vault-data:/app/var
 
+    # Härtung: Außerhalb des Datenverzeichnisses schreibt der Dienst nicht und
+    # braucht dafür weder Schreibrechte im Wurzeldateisystem noch Capabilities.
     read_only: true
     tmpfs:
       - /tmp
@@ -109,8 +72,8 @@ services:
     security_opt:
       - no-new-privileges:true
 
-    # Deutlich mehr als beim statischen Betrieb: Python, SQLAlchemy und der
-    # Upload einer Vault-Datei bis zur konfigurierten Größe brauchen Platz.
+    # Python, SQLAlchemy und der Upload einer Vault-Datei bis zur
+    # konfigurierten Größe brauchen Platz.
     mem_limit: 256m
     pids_limit: 256
 

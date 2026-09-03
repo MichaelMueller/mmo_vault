@@ -27,8 +27,15 @@
 set -eu
 
 CONTAINER=nextcloud
+
+# The Nextcloud user id, which is the directory name under data/ - often a mail
+# address rather than a login name. Read it off the path:
+#   /var/www/html/data/mmuelleronline83@googlemail.com/files/...
+#                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this
 NC_USER=admin
-TARGET="$NC_USER/files/Vault-Backup"
+FOLDER=Vault-Backup
+
+TARGET="$NC_USER/files/$FOLDER"
 
 # The name comes from the interface and may contain anything, including a
 # slash. One filter, so it stays a file name.

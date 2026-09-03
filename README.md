@@ -132,8 +132,10 @@ What travels is ciphertext, which is what makes a copy into a sync folder defens
 set -eu
 
 CONTAINER=nextcloud
-NC_USER=admin
-TARGET="$NC_USER/files/Vault-Backup"
+NC_USER=admin          # the user id = the directory name under data/, often a mail address
+FOLDER=Vault-Backup
+
+TARGET="$NC_USER/files/$FOLDER"
 
 # The name comes from the interface and may contain anything, a slash
 # included. One filter, so it stays a file name.

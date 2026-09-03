@@ -5270,11 +5270,15 @@ function renderCustomFieldRows(slot, fields){
     const label = document.createElement('span');
     label.className = 'flabel';
     label.textContent = field.label || t('cf_value_placeholder');
-    head.appendChild(label);
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+    head.append(label, actions);
 
     const val = document.createElement('span');
     val.className = 'val';
     val.textContent = secret ? '•'.repeat(Math.min(value.length || 8, 16)) : value;
+
+    const copy = () => copyToClipboard(value, secret ? 'toast_secret_field_copied' : 'toast_field_copied', secret);
 
     if(secret){
       const eye = document.createElement('button');
@@ -5286,10 +5290,19 @@ function renderCustomFieldRows(slot, fields){
         const masked = row.classList.toggle('masked');
         val.textContent = masked ? '•'.repeat(Math.min(value.length || 8, 16)) : value;
       };
-      head.appendChild(eye);
+      actions.appendChild(eye);
     }
 
-    row.onclick = () => copyToClipboard(value, secret ? 'toast_secret_field_copied' : 'toast_field_copied', secret);
+    // The same button as on the other rows. The whole row copies as well, but
+    // that is invisible - without the button nobody knows it is there.
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'mini-btn';
+    copyBtn.title = t('copy_tt');
+    copyBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11z"/></svg>';
+    copyBtn.onclick = (ev) => { ev.stopPropagation(); copy(); };
+    actions.appendChild(copyBtn);
+
+    row.onclick = copy;
     row.append(head, val);
     slot.appendChild(row);
   });

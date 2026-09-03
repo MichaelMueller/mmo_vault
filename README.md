@@ -15,7 +15,7 @@ An optional server exists for the case the single file cannot cover: several peo
 - **AES-256-GCM**, key from PBKDF2-HMAC-SHA256 with 600,000 iterations, 16-byte salt, own 96-bit IV per block. Old files are raised to the current iteration count on unlock.
 - **No network connection**, enforced by `default-src 'none'; connect-src 'none'` — no CDN, no fonts, no telemetry.
 - **Two entry types:** login (URL, username, password, 2FA, notes) and free text with Markdown.
-- **Custom fields** on free-text entries: any number of labelled fields — a line of text, a password, or a multi-line block. Tapping a field copies its value.
+- **Custom fields** on free-text entries: any number of labelled fields — a line of text, a password, or a multi-line block. Each row carries a copy button, and tapping the row copies as well.
 - **2FA/TOTP** per RFC 6238, including 8 digits and SHA-256/512. QR codes import as an image where the browser offers `BarcodeDetector`.
 - **File attachments** in their own encrypted blocks, decrypted on download rather than on unlock.
 - **Tags, full-text search and field filters** (`id=42`, `tag=work`, `typ=freitext`), combinable; `#search=…` as a deep link.

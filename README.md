@@ -131,31 +131,24 @@ What travels is ciphertext, which is what makes a copy into a sync folder defens
 #!/bin/sh
 set -eu
 
-CONTAINER=nextcloud
-NC_USER=admin          # the user id = the directory name under data/, often a mail address
+NC_DATA=/srv/home_stack/data/nextcloud/data
+NC_USER=admin          # the user id = the directory name in NC_DATA
 FOLDER=Vault-Backup
-
-TARGET="$NC_USER/files/$FOLDER"
+CONTAINER=nextcloud
 
 # The name comes from the interface and may contain anything, a slash
 # included. One filter, so it stays a file name.
 NAME=$(printf '%s' "$MMO_VAULT_NAME" | tr -c 'A-Za-z0-9._-' '_')
-DEST="/var/www/html/data/$TARGET/$NAME.ndjson"
 
-docker exec -u www-data "$CONTAINER" mkdir -p "/var/www/html/data/$TARGET"
-docker cp "$MMO_VAULT_FILE" "$CONTAINER:$DEST"
-docker exec "$CONTAINER" chown www-data:www-data "$DEST"     # docker cp writes as root
-docker exec -u www-data "$CONTAINER" php occ files:scan --path="$TARGET" --quiet
+mkdir -p "$NC_DATA/$NC_USER/files/$FOLDER"
+cp "$MMO_VAULT_FILE" "$NC_DATA/$NC_USER/files/$FOLDER/$NAME.ndjson"
+
+docker exec -u www-data "$CONTAINER" php occ files:scan --path="$NC_USER/files/$FOLDER" --quiet
 ```
 
-Files placed in the data directory from outside stay invisible to Nextcloud until they are scanned — that is what the last line is for. It does **not** produce Nextcloud versions, though: those only come from writes that go through Nextcloud itself. For versions, and without needing a scan at all, upload over WebDAV with an app password:
+The user id is the directory name inside the data directory — often a mail address rather than a login name; read it off the path. Files placed there from outside stay invisible to Nextcloud until they are scanned, which is what the last line is for. They get no Nextcloud *versions*, though: those only come from writes that go through Nextcloud itself.
 
-```sh
-curl -fsS -u "$NC_USER:$NC_APP_PASSWORD" -T "$MMO_VAULT_FILE" \
-  "https://nc.example/remote.php/dav/files/$NC_USER/Vault-Backup/$NAME.ndjson"
-```
-
-The docker variant needs access to the Docker socket, which the vault container deliberately does not have — mounting it would hand the service root on the host. Use it when the service runs on the host, and the WebDAV one otherwise.
+Both prerequisites are worth checking against your setup: the script needs the data directory in its own filesystem, and `docker` for the scan. The vault container has neither by default — it sees only its own volume, and mounting the Docker socket would hand the service root on the host. So this one fits a service running on the host; from a container, bind-mount the target folder and let the scan come from elsewhere, for instance a cron job on the host.
 
 ### Reverse proxy
 

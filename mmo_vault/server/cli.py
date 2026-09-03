@@ -161,8 +161,13 @@ def cmd_start(args: argparse.Namespace) -> int:
 
     engine = db.init()
     if migrations.pending_migrations(engine):
+        # Deliberately not migrated here. An update that brings a schema change
+        # is a moment to have a backup, and two containers starting at once
+        # would both begin migrating the same database.
         print("The database schema is out of date.\n"
-              "Run `python mmo_vault.py setup --force` or `alembic upgrade head`.", file=sys.stderr)
+              "  python mmo_vault.py migrate\n"
+              "  docker compose run --rm mmo-vault-server migrate\n"
+              "Back up the data directory first.", file=sys.stderr)
         return 1
     with db.session_scope() as session:
         problems = readiness_problems(session)
@@ -185,6 +190,31 @@ def cmd_start(args: argparse.Namespace) -> int:
         proxy_headers=config.server.proxy_headers,
         forwarded_allow_ips=(config.server.forwarded_allow_ips if config.server.proxy_headers else None),
     )
+    return 0
+
+
+# ------------------------------------------------------------------- migrate
+
+
+def cmd_migrate(args: argparse.Namespace) -> int:
+    """Brings the schema up to date - the step `start` refuses to take by itself.
+
+    Its own command rather than a flag on `start`, because in a container the
+    only alternative was overriding the entrypoint to reach alembic, and
+    `setup --force` would have asked for every provider detail again just to
+    run a migration.
+    """
+    url = environment.database_url()
+    engine = db.init()
+    current = migrations.current_revision(engine)
+    head = migrations.head_revision()
+    if not migrations.pending_migrations(engine):
+        print(f"Schema is up to date ({current or 'empty'}).")
+        return 0
+    print(f"Database: {url}")
+    print(f"Migrating {current or 'empty database'} -> {head}")
+    migrations.upgrade_to_head(url)
+    print("Done.")
     return 0
 
 
@@ -249,6 +279,9 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--port", type=int)
     start.add_argument("--reload", action="store_true", help="for development")
     start.set_defaults(func=cmd_start)
+
+    migrate = sub.add_parser("migrate", help="bring the database schema up to date")
+    migrate.set_defaults(func=cmd_migrate)
 
     export = sub.add_parser("export-vault", help="print a vault's ciphertext to stdout")
     export.add_argument("vault_id", help="vault id, or its name if unique")

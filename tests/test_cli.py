@@ -132,3 +132,39 @@ def test_migrating_does_not_silence_the_service(configured, caplog):
     with caplog.at_level("INFO", logger="mmo_vault.server.hooks"):
         logging.getLogger("mmo_vault.server.hooks").error("still audible")
     assert [r.getMessage() for r in caplog.records] == ["still audible"]
+
+
+def test_migrate_brings_an_old_schema_up_to_date(data_dir, capsys):
+    """The step `start` refuses to take by itself.
+
+    Reachable without overriding the container entrypoint and without
+    `setup --force`, which would ask for every provider detail again.
+    """
+    from alembic import command
+
+    migrations.upgrade_to_head()
+    command.downgrade(migrations.alembic_config(), "-1")
+    engine = db.init()
+    assert migrations.pending_migrations(engine)
+
+    assert main(["migrate"]) == 0
+    out = capsys.readouterr().out
+    assert "Migrating" in out and "Done." in out
+    assert not migrations.pending_migrations(db.init())
+
+    # Running it again says so instead of doing anything.
+    assert main(["migrate"]) == 0
+    assert "up to date" in capsys.readouterr().out
+
+
+def test_start_names_a_command_that_exists(data_dir, capsys):
+    """The old message pointed at `setup --force` and bare `alembic`, neither
+    of which is reachable in the container without an entrypoint override."""
+    migrations.upgrade_to_head()
+    from alembic import command
+    command.downgrade(migrations.alembic_config(), "-1")
+
+    assert main(["start"]) == 1
+    err = capsys.readouterr().err
+    assert "mmo_vault.py migrate" in err
+    assert "docker compose run --rm mmo-vault-server migrate" in err

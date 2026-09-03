@@ -57,6 +57,12 @@ It reads exactly two environment variables; everything else lives in the databas
 
 `setup` asks for the public origin, the primary identity provider and the first administrator addresses, and writes them into the database. It runs once, before the first start.
 
+After an update that brings a schema change, `start` refuses and says so — migrating is a deliberate step, not something a container does to itself while restarting. Back up the data directory, then:
+
+```bash
+docker compose run --rm mmo-vault-server migrate
+```
+
 ### With compose from this repository
 
 ```bash

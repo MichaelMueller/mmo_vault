@@ -106,6 +106,60 @@ volumes:
 
 Run the one-off setup with `docker compose run --rm vault setup`.
 
+### Backup scripts
+
+Every executable file in `<MMO_VAULT_DIR>/backup_scripts/` runs after a vault was saved or restored — in name order, so `10-copy` goes before `20-notify`. The directory is created by `setup`; until something lies in it, nothing happens.
+
+The scripts run *after* the response, so a slow one never delays the save, and none of them can break one: a script that fails, hangs (cut off after 120 s) or cannot be started is logged and otherwise ignored — the vault is already written at that point. `chmod -x` parks a script without moving it; names starting with `.` or `_` are skipped.
+
+What a script gets, in its environment — no arguments, no shell, so a vault name cannot turn into a command:
+
+| Variable | |
+|---|---|
+| `MMO_VAULT_FILE` | absolute path of the file that just changed |
+| `MMO_VAULT_NAME` | the vault's name as shown in the interface |
+| `MMO_VAULT_ID` | its id, which is also its directory under `vaults/` |
+| `MMO_VAULT_GENERATION` | number of the generation just kept |
+| `MMO_VAULT_ACTOR` | who saved |
+| `MMO_VAULT_DIR` | the data directory |
+
+What travels is ciphertext, which is what makes a copy into a sync folder defensible at all — the target never sees anything readable.
+
+[`mmo_vault/examples/backup_scripts/10-nextcloud.sh`](mmo_vault/examples/backup_scripts/10-nextcloud.sh) copies the vault into a Nextcloud folder and scans it in:
+
+```sh
+#!/bin/sh
+set -eu
+
+NEXTCLOUD_CONTAINER=nextcloud
+NEXTCLOUD_USER=admin
+FOLDER=Vault-Backup
+
+TARGET="$NEXTCLOUD_USER/files/$FOLDER"
+TARGET_PATH="/var/www/html/data/$TARGET"
+
+# The name comes from the interface: everything outside this set becomes an
+# underscore, so no name can turn into a second path or argument.
+SAFE_NAME=$(printf '%s' "$MMO_VAULT_NAME" | tr -c 'A-Za-z0-9._-' '_')
+FILE="${SAFE_NAME}-$(date -u +%Y%m%dT%H%M%SZ)-gen${MMO_VAULT_GENERATION}.ndjson"
+
+docker exec -u www-data "$NEXTCLOUD_CONTAINER" mkdir -p "$TARGET_PATH"
+docker cp "$MMO_VAULT_FILE" "$NEXTCLOUD_CONTAINER:$TARGET_PATH/$FILE"
+docker exec "$NEXTCLOUD_CONTAINER" chown www-data:www-data "$TARGET_PATH/$FILE"
+docker exec -u www-data "$NEXTCLOUD_CONTAINER" php occ files:scan --path="$TARGET" --quiet
+```
+
+`docker cp` writes as root, hence the `chown`; and files placed in the data directory from outside stay invisible to Nextcloud until they are scanned.
+
+This variant needs the Docker socket, which the vault container deliberately does not have — mounting it would hand the service root on the host. So either run the service directly on the host, or upload over WebDAV with an app password instead, which needs no scan at all:
+
+```sh
+curl -fsS -u "$NC_USER:$NC_APP_PASSWORD" -T "$MMO_VAULT_FILE" \
+  "https://nc.example/remote.php/dav/files/$NC_USER/Vault-Backup/$FILE"
+```
+
+Nothing prunes the copies. The server keeps every generation anyway, so decide for yourself how many belong in the backup folder.
+
 ### Reverse proxy
 
 The proxy terminates TLS and forwards to port 4080. Two things belong there rather than in the service:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 import pytest
 
@@ -117,3 +118,17 @@ def test_export_vault_prints_the_ciphertext(admin, capsys):
     assert main(["export-vault", "Team-Vault", "--generation", "1"]) == 0
     assert capsys.readouterr().out == text
     assert main(["export-vault", "gibtsnicht"]) == 1
+
+
+def test_migrating_does_not_silence_the_service(configured, caplog):
+    """Alembic's fileConfig switches off every existing logger by default.
+
+    Migrations run inside the service - on setup, and as the schema check on
+    start - so the default would leave it mute from that moment on, with
+    nothing saying why. Backup scripts report through the log; this is what
+    makes that reporting arrive at all.
+    """
+    migrations.upgrade_to_head()
+    with caplog.at_level("INFO", logger="mmo_vault.server.hooks"):
+        logging.getLogger("mmo_vault.server.hooks").error("still audible")
+    assert [r.getMessage() for r in caplog.records] == ["still audible"]

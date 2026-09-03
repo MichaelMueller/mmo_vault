@@ -47,6 +47,9 @@ def cmd_setup(args: argparse.Namespace) -> int:
     data_dir = environment.data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
     environment.vaults_dir().mkdir(exist_ok=True)
+    # Created empty, so the place to hang a backup script is visible without
+    # having to read the documentation first.
+    environment.backup_scripts_dir().mkdir(exist_ok=True)
 
     print("MMO Vault - setting up the server variant\n")
     print(f"Data directory: {data_dir}")

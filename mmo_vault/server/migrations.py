@@ -22,6 +22,13 @@ def alembic_config(url: str | None = None) -> AlembicConfig:
     # Alembic resolves script_location relative to the current directory, which
     # is not necessarily the project root when the service is started elsewhere.
     config.set_main_option("script_location", str(PROJECT_ROOT / "mmo_vault" / "migrations"))
+    # Whoever is already running decides how logging works. alembic.ini's
+    # logging section replaces the root handlers, which inside the service
+    # means uvicorn's output is swapped out mid-flight - and everything the
+    # service logs afterwards, backup script failures included, disappears.
+    # env.py honours this flag; the alembic command line does not set it and
+    # keeps its own configuration.
+    config.attributes["configure_logger"] = False
     if url:
         # Handed in explicitly rather than left to env.py: with --config the
         # caller may well mean a different database than var/config.toml names,

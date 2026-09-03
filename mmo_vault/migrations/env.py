@@ -13,8 +13,12 @@ from mmo_vault.server import environment
 from mmo_vault.server.models import Base
 
 config = context.config
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+# Only when alembic runs on its own. Called from inside the service, this would
+# switch off every logger that already exists and replace the root handlers -
+# the service would go quiet from its first migration onwards, with nothing
+# saying why. migrations.py sets the flag; the command line leaves it unset.
+if config.config_file_name is not None and config.attributes.get("configure_logger", True):
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # A URL set by the caller wins; otherwise the environment decides. There is no
 # configuration file to consult any more - where the database is comes from

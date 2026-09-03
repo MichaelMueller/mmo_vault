@@ -166,6 +166,7 @@ Entfallen seit 2.1.0: die früheren SEC-33 bis SEC-39 und SEC-46 (Passkeys, Pass
 - **Serverbetrieb:** Wer den Dienst kontrolliert, kann Vault-Dateien löschen, zurückrollen oder durch ältere Generationen ersetzen — und beliebigen Code in die ausgelieferte Anwendung injizieren. Lesen kann er die Vault-Dateien nicht. Verfügbarkeit und Integrität hängen damit am Server, Vertraulichkeit weiterhin allein am Master-Passwort. Wer den höchsten Anspruch hat, nutzt die lokale Datei.
 - **Identity Provider:** Wer den Provider kontrolliert, kann sich als jede gelistete Adresse anmelden — der Dienst vertraut dem Wort des Providers. Das ist der bewusste Tausch: eine Stelle für Identität, MFA und Offboarding statt eines zweiten Satzes Zugangsdaten, der verloren gehen kann. Fällt der Provider aus, ist der *Dienst* nicht erreichbar, die Daten schon: `export-vault` liefert jede Datei als NDJSON, die sich mit der lokalen Anwendung öffnen lässt.
 - **Gruppen-Sync ist nachlaufend:** Eine Gruppenänderung beim Provider wirkt beim nächsten Login. Wer aus einer Gruppe entfernt wird, behält den Zugriff bis zum Sitzungsende (höchstens `session_hours`, Vorgabe 12 h) — oder bis ein Administrator die Sitzung widerruft.
+- **Backup-Skripte:** Wer in `backup_scripts/` schreiben darf, führt Code als der Dienstbenutzer aus. Das ist kein zusätzliches Risiko, sondern dasselbe: wer dort schreiben kann, kann auch die Datenbank ersetzen. Das Verzeichnis gehört dem Betreiber, nicht dem Webdienst. Was die Skripte weitertragen, ist Chiffrat — ein Ziel wie ein Nextcloud-Ordner sieht nie Klartext.
 - **Geteilte Vaults:** Alle Schreibberechtigten kennen dasselbe Master-Passwort. Der Entzug einer Freigabe nimmt den Zugriff auf den Dienst, **nicht** die Kenntnis des Passworts. Nach einem Entzug gehört das Master-Passwort gewechselt.
 - **Zugang über den Server:** Wer Shell-Zugang zum Server hat, kann sich über `setup --force` selbst auf die Allowlist setzen oder mit `export-vault` jede Datei ziehen. Das ist beabsichtigt und unvermeidbar — wer den Server kontrolliert, kontrolliert den Dienst. Lesen kann er die Dateien trotzdem nicht.
 - Die Dateisperre ist beratend und keine Sicherheitsgrenze. Sie schützt vor versehentlichem Parallelbearbeiten, nicht vor einem böswilligen Client.
@@ -343,6 +344,11 @@ Datei bleibt davon unberührt und funktioniert unverändert ohne Netzwerk.
 | FUN-105 | Konten entstehen nicht von Hand. Administratoren KÖNNEN sie deaktivieren, ihre Sitzungen widerrufen, lokale Gruppen zuweisen und sie löschen; das Löschen MUSS Freigaben, Sperren und Gruppenmitgliedschaften des Kontos mitnehmen. |
 | FUN-106 | Gruppen sind **lokal** (Mitglieder von Hand) oder **gespiegelt** (Mitglieder vom Provider, Schalter `sync_groups` je Provider für Microsoft und Google). Ein Spiegel, dessen Provider nicht mehr synchronisiert, MUSS als eingefroren gekennzeichnet sein und behält seinen letzten Stand. Freigaben funktionieren auf beide gleich. |
 | FUN-107 | Einstellungen — Origin, Sitzungsdauer, Leerlaufzeit, Größenlimit, Sperrlaufzeit, Warnmarke der Historie — MÜSSEN in der Verwaltung änderbar sein und ohne Neustart wirken. |
+| FUN-108 | Jede ausführbare Datei in `<MMO_VAULT_DIR>/backup_scripts/` MUSS nach jedem erfolgreichen Schreibvorgang und nach jedem Wiederherstellen ausgeführt werden, in Namensreihenfolge. Das Verzeichnis wird von `setup` angelegt; ist es leer, passiert nichts. |
+| FUN-109 | Die Skripte MÜSSEN **nach** der Antwort laufen. Ein langsames Skript DARF den Schreibvorgang nicht verzögern und die Sperre nicht halten. |
+| FUN-110 | Ein Skript DARF einen Schreibvorgang nicht scheitern lassen: Fehlschlag, Nichtstartbarkeit und Zeitüberschreitung (Vorgabe 120 s) MÜSSEN protokolliert und ansonsten übergangen werden. Ein fehlgeschlagenes Skript DARF die folgenden nicht verhindern. |
+| FUN-111 | Skripte MÜSSEN ohne Shell gestartet werden und ihre Angaben ausschließlich über die Umgebung erhalten (`MMO_VAULT_FILE`, `_NAME`, `_ID`, `_GENERATION`, `_ACTOR`, `_DIR`). Ein Vault-Name DARF nicht zu einem Kommando werden können. |
+| FUN-112 | An ein Skript DARF nur diese Umgebung übergeben werden, nicht die des Dienstes: was dort an Geheimnissen steht, geht Skripte nichts an. Nicht ausführbare Dateien sowie Namen mit führendem Punkt oder Unterstrich MÜSSEN übersprungen werden. |
 
 ### 4.8 Markdown in Freitext-Einträgen
 
@@ -475,6 +481,7 @@ erkennbar.
 | NFR-07 | Neue Eintragstypen MÜSSEN durch Ergänzen von `RECORD_TYPES` und der zugehörigen Übersetzungsschlüssel hinzufügbar sein, ohne Filter-, Dialog- oder Badge-Logik anzufassen. |
 | NFR-08 | Die Anwendungsdatei MUSS ohne Build-Schritt auskommen: `mmo_vault/public_html/mmo_vault.html` ist zugleich Quelle und Auslieferung. Im Serverbetrieb liefert der Dienst genau diese Datei aus; einen separaten Webserver gibt es nicht. |
 | NFR-09 | Der Container MUSS als unprivilegierter Benutzer auf einem Port oberhalb 1024 laufen und mit read-only Wurzeldateisystem sowie ohne Capabilities startfähig sein. |
+| NFR-09a | Migrationen laufen im Dienst (bei `setup` und als Schemaprüfung von `start`). Sie DÜRFEN die Logging-Konfiguration des laufenden Prozesses nicht ersetzen — sonst verstummt der Dienst ab der ersten Migration, und mit ihm die Rückmeldung der Backup-Skripte. |
 | NFR-10 | Die ausgelieferte Anwendung MUSS `Cache-Control: no-store` tragen. Sie enthält den Adapter der laufenden Sitzung; eine zwischengespeicherte Kopie zeigt auf eine Sitzung, die es nicht mehr gibt. |
 
 ---
@@ -639,6 +646,9 @@ Abgehakte Punkte sind nachweisbar geprüft — die Krypto-, Datenintegritäts-, 
 - [x] Atomares Schreiben: abgebrochener Schreibvorgang lässt die vorige Datei unversehrt, kein Rest im Verzeichnis
 - [x] Generationen bei jedem Schreibvorgang; Wiederherstellen erzeugt eine neue; Nummern werden nicht wiederverwendet; Löschen einzeln, unterhalb einer Nummer und vollständig; aktuelle Datei bleibt
 - [x] `export-vault` nach ID und Name, aktuelle Datei und Generation; unbekannt ergibt Fehlercode 1
+- [x] Backup-Skripte: laufen nach Schreiben und Wiederherstellen, in Namensreihenfolge; bekommen Datei, Name, Generation und Urheber in der Umgebung, nicht die Umgebung des Dienstes
+- [x] Backup-Skripte: nicht ausführbare Dateien sowie `.`/`_`-Namen werden übersprungen; Fehlschlag, Zeitüberschreitung und Nichtstartbarkeit werden protokolliert, brechen den Schreibvorgang nicht ab und halten die folgenden Skripte nicht auf
+- [x] Nach einer Migration im Prozess protokolliert der Dienst weiterhin
 - [x] Injektion: genau zwei Änderungen, Datei auf dem Datenträger unverändert, Adapter vor dem Anwendungsskript, `/api/injection` zeigt den Block
 - [x] Anmeldeseite zeigt nur Provider-Schaltflächen, kein Passwortfeld
 - [ ] OIDC-Anmeldung gegen Microsoft 365 und Google mit echten Zugangsdaten, einschließlich Gruppen-Sync (Google: ob `searchDirectGroups` für Nutzer ohne Admin-Rolle Ergebnisse liefert)

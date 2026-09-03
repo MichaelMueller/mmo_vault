@@ -27,6 +27,11 @@ def data_dir() -> Path:
     return (Path(raw) if raw else PROJECT_ROOT / "var").resolve()
 
 
+def backup_scripts_dir() -> Path:
+    """Where the operator hangs their own scripts. Run after every save."""
+    return data_dir() / "backup_scripts"
+
+
 def database_url() -> str:
     """Absolute by construction.
 

@@ -19,12 +19,20 @@ import datetime as dt
 import secrets
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session as DbSession
 
-from .. import deps, history, storage, vaults
+from .. import deps, history, hooks, storage, vaults
 from ..config import Config
 from ..models import AuditLog, Generation, Group, User, Vault, VaultAccess, VaultLock, utcnow
 
@@ -280,6 +288,7 @@ def read_content(
 async def write_content(
     vault_id: str,
     request: Request,
+    background: BackgroundTasks,
     user: User = Depends(deps.require_full_user),
     db: DbSession = Depends(deps.get_db),
     config: Config = Depends(deps.get_config),
@@ -332,11 +341,14 @@ async def write_content(
     vault.etag = etag
     vault.size_bytes = size
     # Every save is kept. Nothing here ever deletes on its own.
-    history.keep(db, vault, body, user)
+    generation = history.keep(db, vault, body, user)
     # The write counts as activity: the lock must not expire while someone is
     # demonstrably working.
     lock.expires_at = utcnow() + dt.timedelta(seconds=config.vault.lock_ttl_seconds)
     _audit(db, user, "vault_written", vault.name, f"{size} bytes")
+    # After the response, never before: a backup script may take its time, and
+    # the person saving should not wait for it.
+    background.add_task(hooks.run_all, vault_id, vault.name, generation.seq, user.name)
     return {"etag": etag, "size_bytes": size}
 
 
@@ -486,6 +498,7 @@ def restore_generation(
     vault_id: str,
     seq: int,
     request: Request,
+    background: BackgroundTasks,
     user: User = Depends(deps.require_full_user),
     db: DbSession = Depends(deps.get_db),
     config: Config = Depends(deps.get_config),
@@ -518,6 +531,8 @@ def restore_generation(
     vault.size_bytes = size
     generation = history.keep(db, vault, text, user, note=f"restored from #{seq}")
     _audit(db, user, "vault_restored", vault.name, f"#{seq} -> #{generation.seq}")
+    # A restore changes the file like any other write, so the scripts run too.
+    background.add_task(hooks.run_all, vault_id, vault.name, generation.seq, user.name)
     return {"etag": etag, "size_bytes": size, "generation": generation.seq}
 
 

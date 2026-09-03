@@ -1268,6 +1268,20 @@ h1.brand{
   </div>
 </div>
 
+<!-- ============ SAVE AFTER A CHANGE ============ -->
+<!-- Last of the overlays on purpose: they all share z-index 50, so document
+     order decides what lies on top - and this one always opens over another. -->
+<div class="overlay" id="saveNowOverlay">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="saveNowTitle" style="max-width:400px;">
+    <h3 id="saveNowTitle" data-i18n="save_now_h">Änderungen speichern?</h3>
+    <p style="font-size:13.5px; line-height:1.6; color:var(--on-surface-variant); margin:0 0 20px;" data-i18n="save_now_text">Die Änderung liegt bisher nur im Arbeitsspeicher. Ohne Speichern ist sie beim Sperren oder Schließen verloren.</p>
+    <div class="dialog-actions">
+      <button class="btn btn-text" id="btnSaveNowLater" data-i18n="save_now_later">Später</button>
+      <button class="btn btn-filled" id="btnSaveNowSave" data-i18n="save_now_save">Speichern</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ "MORE" MENU (BOTTOM SHEET) ============ -->
 <!-- Must sit at body level, not inside the topbar: its backdrop-filter would
      turn it into the containing block for position:fixed. -->
@@ -1367,6 +1381,10 @@ const I18N = {
     unsaved_text: 'Es gibt Änderungen, die noch nicht in der Datei gespeichert sind. Möchtest du vor dem Sperren speichern?',
     unsaved_discard: 'Ohne Speichern sperren',
     unsaved_save: 'Speichern & Sperren',
+    save_now_h: 'Änderungen speichern?',
+    save_now_text: 'Die Änderung liegt bisher nur im Arbeitsspeicher. Ohne Speichern ist sie beim Sperren oder Schließen verloren.',
+    save_now_later: 'Später',
+    save_now_save: 'Speichern',
     filter_all: 'Alle',
     empty_title: 'Noch keine Einträge',
     empty_text: 'Lege deinen ersten Eintrag über den Button unten rechts an.',
@@ -1653,6 +1671,10 @@ const I18N = {
     unsaved_text: 'There are changes that have not been saved to the file yet. Save before locking?',
     unsaved_discard: 'Lock without saving',
     unsaved_save: 'Save & Lock',
+    save_now_h: 'Save changes?',
+    save_now_text: 'The change exists in memory only so far. Without saving it is lost on locking or closing.',
+    save_now_later: 'Later',
+    save_now_save: 'Save',
     filter_all: 'All',
     empty_title: 'No entries yet',
     empty_text: 'Add your first entry using the button in the bottom right.',
@@ -3419,6 +3441,28 @@ document.getElementById('btnUnsavedDiscard').onclick = () => {
   unsavedChangesOverlay.classList.remove('show');
   lockApp();
 };
+/* ---------- Ask to save, after every deliberate change ----------
+
+   Called at the end of an action a person carried out, never by the automatic
+   changes on unlocking (assigning missing numbers, raising the iteration
+   count). Those are not their doing, and a question about them the moment the
+   vault opens would be a riddle rather than a safeguard. */
+const saveNowOverlay = document.getElementById('saveNowOverlay');
+
+function askToSave(){
+  // Saving twice writes the same file again and marks nothing clean that was
+  // not clean already - so a change that did not happen asks nothing.
+  if(!state.dirty || !state.key) return;
+  saveNowOverlay.classList.add('show');
+}
+document.getElementById('btnSaveNowLater').onclick = () => saveNowOverlay.classList.remove('show');
+document.getElementById('btnSaveNowSave').onclick = () => {
+  // Closed first: saveToFile() may open the location picker or the fallback
+  // dialog, and this one must not sit in front of them.
+  saveNowOverlay.classList.remove('show');
+  saveToFile();
+};
+
 document.getElementById('btnUnsavedSave').onclick = async () => {
   unsavedChangesOverlay.classList.remove('show');
   // Only lock if the save really went through - otherwise the changes would be gone.
@@ -3486,6 +3530,7 @@ document.getElementById('autoLockSelect').addEventListener('change', (e) => {
   showToast(state.autoLockMinutes > 0
     ? t('autolock_set_toast').replace('{min}', state.autoLockMinutes)
     : t('autolock_off_toast'));
+  askToSave();
 });
 
 /* ---------- Change master password ---------- */
@@ -4163,6 +4208,7 @@ async function restoreDeletedEntry(id){
     showToast(t('toast_entry_restored'));
   }
   setActiveTypeFilter(deletedEntries().length ? 'papierkorb' : 'all');
+  askToSave();
 }
 
 /* Draws the trash view into the entry grid. */
@@ -4395,6 +4441,7 @@ function restoreVersion(version){
   renderEntries();
   renderVersionsList();
   showToast(t('toast_version_restored'));
+  askToSave();
 }
 
 /* Take a single field from an old snapshot. */
@@ -4416,6 +4463,7 @@ function restoreVersionField(version, field){
   renderEntries();
   renderVersionsList();
   showToast(t('toast_version_field_restored'));
+  askToSave();
 }
 
 /* Delete versions. Has to take effect immediately: a deletion that only bites at
@@ -4475,6 +4523,7 @@ async function clearVersionsOfEntry(id){
   renderEntries();
   renderVersionsList();
   showToast(t('toast_versions_cleared'));
+  askToSave();
 }
 
 /* ---------- Manage versions: bulk delete ----------
@@ -4626,6 +4675,7 @@ document.getElementById('btnDeleteSelectedVersions').onclick = async () => {
   renderEntries();
   renderManageVersions();
   showToast(t('manage_deleted', { n: removed }));
+  askToSave();
 };
 
 document.getElementById('btnCloseVersions').onclick = closeVersionsDialog;
@@ -5098,6 +5148,7 @@ async function duplicateEntry(id){
     state.dirty = true;
     renderEntries();
     showToast(t('toast_entry_duplicated'));
+    askToSave();
   }catch(err){
     // Only fails when an attachment cannot be decrypted. In that case
     // deliberately no half duplicate comes into being.
@@ -5126,6 +5177,7 @@ document.getElementById('menuDelete').onclick = () => {
     state.dirty = true;
     renderEntries();
     showToast(t('toast_entry_deleted'));
+    askToSave();
   }
 };
 
@@ -5568,6 +5620,7 @@ document.getElementById('btnSaveEntry').onclick = () => {
   closeEntryDialog();
   renderEntries();
   showToast(t('toast_entry_saved'));
+  askToSave();
 };
 
 /* ============================================================
@@ -5763,6 +5816,7 @@ document.getElementById('csvFileInput').addEventListener('change', async (e) => 
     if(b.imported > CSV_WARN_ROWS) parts.push(t('import_many', { n: CSV_WARN_ROWS }));
     display.textContent = parts.join(' ');
     display.className = 'status-msg ' + (b.imported ? 'info' : 'error');
+    if(b.imported) askToSave();
   }catch(err){
     display.textContent = t('import_err_read') + err.message;
     display.className = 'status-msg error';
@@ -5918,7 +5972,7 @@ window.addEventListener('beforeunload', (e)=>{
 
 // Order = priority when closing (topmost dialog first).
 const DIALOG_CLOSE_ORDER = [
-  'unsavedChangesOverlay', 'entryDialogOverlay', 'changePasswordOverlay',
+  'saveNowOverlay', 'unsavedChangesOverlay', 'entryDialogOverlay', 'changePasswordOverlay',
   'autoLockOverlay', 'historyOverlay', 'aboutOverlay'
 ];
 

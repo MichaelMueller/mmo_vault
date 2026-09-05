@@ -3,26 +3,32 @@
 {% block wrapclass %}narrow{% endblock %}
 
 {% block content %}
-<div class="card">
-  <h1>MMO Vault</h1>
-  <p class="muted">Anmeldung am Server über deinen Identitätsanbieter. Der Vault
-     selbst wird danach mit dem Master-Passwort entsperrt — das bleibt im Browser.</p>
+<div class="panel">
+  <p class="eyebrow">MMO Vault</p>
+  <h1>Anmelden</h1>
+  <p class="lead">
+    Über deinen Identitätsanbieter. Den Vault selbst entsperrt danach das
+    Master-Passwort — das bleibt im Browser.
+  </p>
 
   {% if denied %}
-  <div class="msg show error">Dieses Konto ist nicht für den Dienst freigeschaltet.</div>
+  <div class="msg show error">
+    Dieses Konto ist nicht für den Dienst freigeschaltet.
+  </div>
   {% endif %}
 
-  {% for provider in providers %}
-  <a href="/auth/oidc/{{ provider.name }}">
-    <button class="block {% if provider.is_primary %}primary{% endif %}">
-      Anmelden mit {{ provider.name }}
-    </button>
-  </a>
-  {% else %}
-  <div class="msg show error">Kein Identitätsanbieter eingerichtet — <code>python mmo_vault.py setup</code>.</div>
-  {% endfor %}
+  <div class="stack">
+    {% for provider in providers %}
+    <a class="btn {% if provider.is_primary %}btn-primary{% endif %} btn-block"
+       href="/auth/oidc/{{ provider.name }}">Anmelden mit {{ provider.name }}</a>
+    {% else %}
+    <div class="msg show error">
+      Kein Identitätsanbieter eingerichtet — <code>python mmo_vault.py setup</code>.
+    </div>
+    {% endfor %}
+  </div>
 
-  <p class="muted" style="margin-top:18px;">
+  <p class="note">
     Es gibt kein Passwort für den Dienst. Wer hinein darf, steht auf einer
     Liste, die ein Administrator pflegt.
   </p>

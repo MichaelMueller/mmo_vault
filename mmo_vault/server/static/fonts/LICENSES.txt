@@ -1,0 +1,26 @@
+Fonts in this directory
+=======================
+
+Space Grotesk (space-grotesk-latin-500.woff2, space-grotesk-latin-700.woff2)
+  Copyright 2020 The Space Grotesk Project Authors
+  https://github.com/floriankarsten/space-grotesk
+  Licensed under the SIL Open Font License, Version 1.1
+
+Inter (inter-latin-400.woff2, inter-latin-600.woff2)
+  Copyright 2016 The Inter Project Authors
+  https://github.com/rsms/inter
+  Licensed under the SIL Open Font License, Version 1.1
+
+Both fonts are self-hosted on this website (no external font CDN is used).
+The full license text is available at:
+  https://openfontlicense.org
+
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007 (summary of terms)
+------------------------------------------------------------------------
+The fonts may be used, studied, modified and redistributed freely as long
+as they are not sold by themselves. The fonts and derivatives may be
+bundled, embedded, redistributed and/or sold with any software provided
+that any reserved names are not used by derivative works. The fonts,
+including any derivative works, can be bundled, embedded, redistributed
+and/or sold with any software, provided that each copy contains the above
+copyright notice and this license.

@@ -1,0 +1,514 @@
+/* The service pages, in the style of michaelmuelleronline.de.
+
+   Tokens, fonts and shapes are taken from that site's base.css and layout.css
+   so the two look like one family. Deliberately not taken along: its motion.css
+   - scroll animations are in the way in a tool - and its sections.css, where
+   `.card` means something else.
+
+   Served as a file rather than inlined, which lets the pages run under
+   style-src 'self' instead of 'unsafe-inline'.
+   ========================================================================= */
+
+/* ---- Fonts (self-hosted, no CDN) ---------------------------------------- */
+
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/space-grotesk-latin-500.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("fonts/space-grotesk-latin-700.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/inter-latin-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("fonts/inter-latin-600.woff2") format("woff2");
+}
+
+/* ---- Tokens -------------------------------------------------------------- */
+
+:root {
+  --bg-0: #0b0f14;
+  --bg-1: #10161e;
+  --surface: rgba(255, 255, 255, 0.045);
+  --surface-solid: #121923;
+  --surface-border: rgba(255, 255, 255, 0.09);
+
+  --text-hi: #e6edf3;
+  --text-mid: #9aa7b4;
+  --text-dim: #8494a3;
+
+  --accent: #f59e0b;
+  --accent-soft: #fbbf24;
+  --accent-glow: rgba(245, 158, 11, 0.15);
+  --accent-dim: rgba(245, 158, 11, 0.4);
+  --danger: #e5707a;
+  --danger-soft: #f0a6ac;
+  --ok: #8fd3a4;
+
+  --font-display: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+
+  --step--1: clamp(0.85rem, 0.82rem + 0.2vw, 0.95rem);
+  --step-0: clamp(1rem, 0.95rem + 0.3vw, 1.125rem);
+  --step-1: clamp(1.25rem, 1.1rem + 0.8vw, 1.6rem);
+  --step-2: clamp(1.6rem, 1.3rem + 1.6vw, 2.4rem);
+
+  --radius: 16px;
+  --radius-sm: 10px;
+  --nav-height: 64px;
+  --content-width: 68rem;
+
+  /* Anything a thumb has to hit. 44px is the size below which touching turns
+     into aiming. */
+  --touch: 44px;
+
+  color-scheme: dark;
+}
+
+/* ---- Reset --------------------------------------------------------------- */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  background-color: var(--bg-0);
+  color: var(--text-mid);
+  font-family: var(--font-body);
+  font-size: var(--step-0);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  /* The page must never scroll sideways - the whole point of the rework. */
+  overflow-x: clip;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-soft); text-decoration: underline; text-underline-offset: 3px; }
+
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+input, select, textarea { font: inherit; }
+strong, b { font-weight: 600; color: var(--text-hi); }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+
+::selection { background: var(--accent-dim); color: var(--text-hi); }
+
+/* ---- Typography ---------------------------------------------------------- */
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  color: var(--text-hi);
+  line-height: 1.2;
+  text-wrap: balance;
+}
+
+h1 { font-size: var(--step-2); font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: var(--step-1); font-weight: 500; }
+h3 { font-size: var(--step-0); font-weight: 500; }
+
+/* The small accent line above a heading, as on the site. */
+.eyebrow {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--step--1);
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+}
+
+.group {
+  margin: 2.5rem 0 0.9rem;
+  font-family: var(--font-display);
+  font-size: var(--step--1);
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.muted { color: var(--text-dim); font-size: var(--step--1); }
+.lead { max-width: 42rem; color: var(--text-mid); }
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--bg-1);
+  padding: 0.15em 0.45em;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+/* ---- Frame --------------------------------------------------------------- */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
+  flex-wrap: wrap;
+  min-height: var(--nav-height);
+  padding: 0.75rem clamp(1rem, 4vw, 2.5rem);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.bar-home {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--step-0);
+  color: var(--text-hi);
+  letter-spacing: -0.01em;
+}
+.bar-home:hover { color: var(--accent-soft); text-decoration: none; }
+
+.bar-user {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  margin-left: auto;
+  font-size: var(--step--1);
+  color: var(--text-dim);
+}
+
+.wrap {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: clamp(1.5rem, 5vh, 3rem) clamp(1rem, 4vw, 2.5rem) 5rem;
+}
+
+/* The first section heading already has the page padding above it; its own
+   margin on top of that leaves a hole. */
+.wrap > h2.group:first-of-type { margin-top: 0; }
+
+/* Wrapped onto its own line, margin-left:auto would push the name and the
+   button against the right edge with a gap in front of them. */
+@media (max-width: 560px) {
+  .bar-user { margin-left: 0; }
+}
+
+.wrap.narrow { max-width: 27rem; }
+
+.panel {
+  padding: clamp(1.1rem, 3vw, 1.75rem);
+  margin-bottom: 1.5rem;
+  background: var(--surface-solid);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius);
+}
+
+.panel > .note { margin-top: 1rem; }
+.panel > .form, .panel > .actions { margin-top: 1.5rem; }
+.panel > .lead { margin-top: 0.75rem; }
+.panel > .msg { margin: 1.5rem 0 0; }
+
+/* Buttons under one another, each the full width - the sign-in page. */
+.stack { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 1.75rem; }
+.note { font-size: var(--step--1); color: var(--text-dim); max-width: 46rem; }
+
+/* ---- Buttons -------------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  min-height: var(--touch);
+  padding: 0.55em 1.3em;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--step--1);
+  color: var(--text-hi);
+  border: 1px solid var(--surface-border);
+  border-radius: 999px;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.btn:hover { border-color: var(--accent-dim); color: var(--accent-soft); text-decoration: none; }
+
+.btn-primary { background: var(--accent); color: var(--bg-0); border-color: transparent; font-weight: 700; }
+.btn-primary:hover { background: var(--accent-soft); color: var(--bg-0); border-color: transparent; }
+
+.btn-danger { color: var(--danger); }
+.btn-danger:hover { border-color: var(--danger); color: var(--danger-soft); }
+
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn:disabled:hover { border-color: var(--surface-border); color: var(--text-hi); }
+
+.btn-block { width: 100%; }
+
+/* Round icon buttons for the row actions. Big enough for a thumb; the label
+   travels in the title and, for screen readers, in aria-label. */
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: var(--touch);
+  height: var(--touch);
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text-mid);
+  border: 1px solid transparent;
+  border-radius: 50%;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.icon-btn:hover { color: var(--accent-soft); background: var(--surface); text-decoration: none; }
+.icon-btn.danger:hover { color: var(--danger); }
+.icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.row-actions { display: flex; flex-wrap: wrap; gap: 0.15rem; justify-content: flex-end; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+
+/* ---- Forms ---------------------------------------------------------------- */
+
+/* One column by default, two from tablet width up. A placeholder is not a
+   label: it disappears the moment someone types, and on a phone it is often
+   the only thing that was ever there. */
+.form { display: grid; gap: 1rem; }
+.form > .wide { grid-column: 1 / -1; }
+
+@media (min-width: 720px) {
+  .form { grid-template-columns: 1fr 1fr; align-items: end; }
+}
+
+.field { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
+.field[hidden] { display: none; }
+
+.field > span {
+  font-family: var(--font-display);
+  font-size: var(--step--1);
+  color: var(--text-mid);
+}
+
+.field input[type="text"],
+.field input[type="email"],
+.field input[type="password"],
+.field input[type="number"],
+.field select {
+  width: 100%;
+  min-height: var(--touch);
+  padding: 0.5em 0.8em;
+  /* 16px keeps iOS from zooming in on focus. Below that it does, and the page
+     never zooms back out. */
+  font-size: max(16px, var(--step--1));
+  color: var(--text-hi);
+  background: var(--bg-0);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+}
+
+.field input:focus-visible, .field select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+.field.check {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: var(--touch);
+}
+
+.field.check input { accent-color: var(--accent); width: 1.15em; height: 1.15em; }
+.field.check > span { color: var(--text-hi); }
+
+/* ---- Messages -------------------------------------------------------------- */
+
+.msg {
+  display: none;
+  padding: 0.8rem 1.1rem;
+  margin-bottom: 1.5rem;
+  font-size: var(--step--1);
+  background: var(--surface-solid);
+  border: 1px solid var(--surface-border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+.msg.show { display: block; }
+.msg.error { border-left-color: var(--danger); color: var(--danger-soft); }
+.msg.ok { border-left-color: var(--ok); color: var(--ok); }
+
+/* On a phone the message belongs where the eye is, not at the top of a page
+   that has been scrolled past. */
+@media (max-width: 720px) {
+  .msg.show {
+    position: fixed;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    z-index: 20;
+    margin: 0;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* ---- Tables that turn into cards -------------------------------------------- */
+
+.list { width: 100%; border-collapse: collapse; font-size: var(--step--1); }
+
+.list th {
+  padding: 0.5rem 0.5rem;
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.list td {
+  padding: 0.7rem 0.5rem;
+  border-top: 1px solid var(--surface-border);
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+
+.list tbody tr:first-child td { border-top: none; }
+.list .right { text-align: right; white-space: nowrap; }
+.list .off { color: var(--text-dim); }
+.list .empty { color: var(--text-dim); font-style: italic; }
+
+/* Below this width a row is a card: the column heading moves in front of the
+   value, out of the head row. No second markup - it stays a table for the
+   keyboard and for a screen reader. */
+@media (max-width: 720px) {
+  .list thead { display: none; }
+
+  .list tr {
+    display: block;
+    margin-bottom: 0.75rem;
+    padding: 0.35rem 0.75rem 0.6rem;
+    background: var(--bg-1);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-sm);
+  }
+
+  .list td {
+    display: grid;
+    grid-template-columns: 7.5rem 1fr;
+    gap: 0.75rem;
+    align-items: baseline;
+    padding: 0.4rem 0;
+    border-top: none;
+  }
+
+  .list td + td { border-top: 1px solid var(--surface-border); }
+
+  .list td::before {
+    content: attr(data-label);
+    font-family: var(--font-display);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  /* The actions get the full width and sit right, where the thumb is. */
+  .list td.right { display: block; text-align: left; white-space: normal; }
+  .list td.right::before { content: none; }
+  .list .row-actions { justify-content: flex-start; padding-top: 0.25rem; }
+}
+
+/* ---- Dialogs ---------------------------------------------------------------- */
+
+/* The native element: it brings the focus trap, Escape and the backdrop along,
+   so none of that has to be built by hand. */
+dialog {
+  width: min(32rem, calc(100vw - 1.5rem));
+  padding: 0;
+  color: var(--text-mid);
+  background: var(--surface-solid);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+dialog.wide { width: min(52rem, calc(100vw - 1.5rem)); }
+dialog::backdrop { background: rgba(6, 8, 12, 0.7); }
+
+.dialog-body { padding: clamp(1.1rem, 4vw, 1.6rem); }
+.dialog-body h2 { margin-bottom: 0.35rem; }
+
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1.5rem;
+}
+
+/* The list of shares inside the dialog. */
+.entries { display: grid; gap: 0.5rem; margin: 1rem 0; }
+
+.entry {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.35rem 0.35rem 0.75rem;
+  background: var(--bg-0);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+}
+
+.entry-name { min-width: 0; overflow-wrap: anywhere; color: var(--text-hi); }
+.entry select { min-height: 2.2rem; padding: 0.2em 0.5em; font-size: var(--step--1);
+  color: var(--text-hi); background: var(--surface-solid);
+  border: 1px solid var(--surface-border); border-radius: 8px; }
+
+.entries-empty { color: var(--text-dim); font-style: italic; padding: 0.5rem 0; }
+
+/* The add row: on a phone underneath one another, side by side from 480px. */
+.entry-add { display: grid; gap: 0.5rem; margin-top: 0.75rem; }
+
+@media (min-width: 480px) {
+  .entry-add { grid-template-columns: 1fr auto auto; align-items: center; }
+}
+
+.checks { display: grid; gap: 0.15rem; max-height: 45vh; overflow-y: auto; margin: 1rem 0; }
+
+.checks label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: var(--touch);
+  padding: 0 0.5rem;
+  border-radius: var(--radius-sm);
+  color: var(--text-hi);
+}
+
+.checks label:hover { background: var(--surface); }
+.checks input { accent-color: var(--accent); width: 1.15em; height: 1.15em; }
+/* The address belongs under the name, not glued behind it: on a phone the
+   two together are wider than the dialog and the separator ends up dangling. */
+.checks .kind { display: block; color: var(--text-dim); font-size: var(--step--1); }
+.checks label { padding-block: 0.35rem; }

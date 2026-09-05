@@ -216,3 +216,38 @@ def test_pages(admin, anonymous):
     page = anonymous.get("/login").text
     assert "/auth/oidc/idp" in page
     assert "password" not in page.lower()
+
+
+# ------------------------------------------------------------------- design
+
+
+def test_the_pages_bring_their_own_stylesheet_and_fonts(anonymous):
+    """Served, not inlined - that is what lets the policy below stay strict."""
+    for path in ("/static/vault.css", "/static/api.js", "/static/admin.js",
+                 "/static/fonts/inter-latin-400.woff2"):
+        assert anonymous.get(path).status_code == 200, path
+
+
+def test_no_inline_style_or_script_on_the_service_pages(admin, anonymous):
+    """The policy forbids both, so an inline attribute would silently do
+    nothing - the kind of bug that only shows up as a crooked layout."""
+    for page in (anonymous.get("/login"), admin.get("/admin")):
+        policy = page.headers.get("content-security-policy", "")
+        assert "frame-ancestors 'none'" in policy
+        assert 'style="' not in page.text
+        assert "<script>" not in page.text
+        meta = page.text.split('http-equiv="Content-Security-Policy" content="')[1].split('"')[0]
+        assert "style-src 'self'" in meta and "script-src 'self'" in meta
+        assert "unsafe-inline" not in meta
+
+
+def test_the_administration_asks_with_dialogs_not_with_prompt(admin):
+    """A share used to be typed as `mueller, #team!` into a one-line system
+    box. Unguessable, and on a phone uncorrectable."""
+    page = admin.get("/admin").text
+    script = admin.get("/static/admin.js").text
+    assert "<dialog" in page
+    # The word survives in a comment explaining why it is gone; the call does not.
+    assert "prompt('" not in script and 'prompt("' not in script
+    # Deletions stay a plain yes/no question; that one works everywhere.
+    assert "confirm(" in script

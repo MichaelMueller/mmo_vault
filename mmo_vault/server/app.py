@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
 from fastapi import Depends, FastAPI, Request, Response, status
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session as DbSession
 from starlette.middleware.sessions import SessionMiddleware
@@ -135,6 +138,16 @@ def create_app(database_url: str | None = None) -> FastAPI:
             content={"detail": "the database is busy - please send the request again"},
             headers={"Retry-After": "1"},
         )
+
+    # Stylesheet, fonts and the two scripts of the service pages. Everything in
+    # here is public by design - server.js already is, through /api/injection -
+    # and nothing else lives in this directory. Serving it rather than inlining
+    # is what lets the pages run without 'unsafe-inline'.
+    app.mount(
+        "/static",
+        StaticFiles(directory=str(Path(__file__).resolve().parent / "static")),
+        name="static",
+    )
 
     app.include_router(auth.router)
     app.include_router(oidc.router)

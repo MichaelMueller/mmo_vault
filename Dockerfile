@@ -2,7 +2,7 @@
 
 # The MMO Vault server.
 #
-#   docker build -t mmo-vault-server:2.1.0 .
+#   docker build -t mmo-vault-server:2.2.0 .
 #   docker compose up -d --build
 #
 # The other way to run MMO Vault needs no image at all: download
@@ -34,7 +34,7 @@ FROM python:3.13-slim AS server
 
 LABEL org.opencontainers.image.title="MMO Vault Server" \
       org.opencontainers.image.description="Serverbetrieb mit OIDC-Anmeldung, Gruppen und Vault-Historie" \
-      org.opencontainers.image.version="2.1.0" \
+      org.opencontainers.image.version="2.2.0" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 COPY --from=builder /venv /venv

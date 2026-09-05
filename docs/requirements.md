@@ -1,7 +1,7 @@
 # MMO Vault — Anforderungsspezifikation
 
-**Version:** 2.1.0
-**Stand:** 2026-08-30
+**Version:** 2.2.0
+**Stand:** 2026-09-05
 **Status:** Im Eigenbetrieb freigegeben. Alle automatisiert prüfbaren Kriterien aus Kapitel 9 sind verifiziert; die verbleibenden erfordern manuelle Durchführung und stehen dort als unmarkierte Kästchen. Diese Zahl wird hier bewusst nicht wiederholt, damit sie nicht veraltet.
 **Autor:** Michael Müller
 
@@ -20,7 +20,7 @@ Seit 2.0.0 gibt es **zwei Betriebsarten**:
 
 Der Server ist **Ablage und Zugriffskontrolle**, nicht Kryptografie. Verschlüsselt und entschlüsselt wird ausschließlich im Browser; Master-Passwort und Schlüssel erreichen ihn nie.
 
-Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 2.1.0. Es richtet sich an Entwicklung, Review und Abnahme.
+Das Dokument beschreibt den Funktions- und Qualitätsumfang der Version 2.2.0. Es richtet sich an Entwicklung, Review und Abnahme.
 
 ### 1.1 Nicht im Geltungsbereich
 

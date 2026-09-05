@@ -75,16 +75,16 @@ Port and bind address come from `VAULT_PORT` and `VAULT_BIND`.
 ### With plain Docker
 
 ```bash
-docker build -t mmo-vault-server:2.1.0 .
+docker build -t mmo-vault-server:2.2.0 .
 docker volume create vault-data
 
-docker run --rm -it -v vault-data:/app/var mmo-vault-server:2.1.0 setup
+docker run --rm -it -v vault-data:/app/var mmo-vault-server:2.2.0 setup
 
 docker run -d --name mmo-vault-server --restart unless-stopped \
   -p 127.0.0.1:4080:4080 -v vault-data:/app/var \
   --read-only --tmpfs /tmp --cap-drop ALL \
   --security-opt no-new-privileges:true \
-  mmo-vault-server:2.1.0
+  mmo-vault-server:2.2.0
 ```
 
 ### Inside an existing compose stack
@@ -94,7 +94,7 @@ One service to paste in, without publishing a port — the reverse proxy in the 
 ```yaml
 services:
   vault:
-    build: { context: ./mmo-vault }          # or: image: mmo-vault-server:2.1.0
+    build: { context: ./mmo-vault }          # or: image: mmo-vault-server:2.2.0
     restart: unless-stopped
     environment:
       MMO_VAULT_DIR: /app/var

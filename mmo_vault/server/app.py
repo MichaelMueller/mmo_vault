@@ -20,7 +20,7 @@ from .models import Provider, User
 from .routers import admin_api, auth, oidc, pages, vault_api
 from .routing import UnitOfWork
 
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.2.0"
 
 
 def readiness_problems(db_session: DbSession) -> list[str]:

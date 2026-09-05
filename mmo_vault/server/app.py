@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request, Response, status
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session as DbSession
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -108,6 +110,31 @@ def create_app(database_url: str | None = None) -> FastAPI:
             "geolocation=(), camera=(), microphone=(), usb=(), payment=(), interest-cohort=()",
         )
         return response
+
+    @app.exception_handler(OperationalError)
+    async def database_busy(request: Request, exc: OperationalError) -> Response:
+        """A write that lost a race with another one, reported as what it is.
+
+        SQLite allows one writer at a time. Two that overlap can leave the
+        second holding a read snapshot the first has already invalidated, and
+        SQLite reports that immediately - the busy timeout waits for a lock,
+        but nothing retries a stale snapshot. That is neither a fault of the
+        service nor permanent, so it must not leave as a 500: the caller can
+        simply send the request again. Everything else operational - an
+        unreadable file, a damaged database - keeps surfacing as an error,
+        because repeating it would not help.
+
+        Not retried here on purpose: by the time this is reached the request
+        may already have had effects of its own, and replaying it blindly is
+        the more expensive mistake.
+        """
+        if not any(word in str(exc.orig).lower() for word in ("locked", "busy")):
+            raise exc
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"detail": "the database is busy - please send the request again"},
+            headers={"Retry-After": "1"},
+        )
 
     app.include_router(auth.router)
     app.include_router(oidc.router)

@@ -42,6 +42,11 @@ def _enable_sqlite_pragmas(engine: Engine) -> None:
         # orphaned rows. WAL keeps a reader from blocking the writer.
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA journal_mode=WAL")
+        # Pins what pysqlite happens to default to today: a second writer waits
+        # for the first instead of failing at once. Note this does not cover a
+        # write whose read snapshot has gone stale - SQLite reports that
+        # immediately and no timeout retries it.
+        cursor.execute("PRAGMA busy_timeout=5000")
         cursor.close()
 
 

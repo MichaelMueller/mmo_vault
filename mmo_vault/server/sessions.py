@@ -21,6 +21,16 @@ from .security import new_session_id
 
 COOKIE_NAME = "mmo_vault_session"
 
+# How stale `last_seen_at` may become before a request refreshes it.
+#
+# It used to be written on every authenticated request, which made a write
+# transaction out of even a plain read - one fsync that the answer waits for,
+# and a row that a concurrent writer can collide with. The value feeds nothing
+# but the idle timeout, and that is counted in minutes, so refreshing it once a
+# minute is precise enough: a session can be declared idle at most this much
+# too early.
+LAST_SEEN_RESOLUTION = dt.timedelta(seconds=60)
+
 
 def create(
     db: DbSession, config: Config, user: User, *, request: Request | None = None
@@ -66,7 +76,9 @@ def lookup(db: DbSession, config: Config, session_id: str | None) -> Session | N
     if session.expires_at <= now or (now - session.last_seen_at) > idle_limit:
         db.delete(session)
         return None
-    session.last_seen_at = now
+    # Only when it has actually gone stale - see LAST_SEEN_RESOLUTION.
+    if now - session.last_seen_at >= LAST_SEEN_RESOLUTION:
+        session.last_seen_at = now
     return session
 
 

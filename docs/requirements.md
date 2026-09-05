@@ -112,10 +112,10 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 
 | ID | Anforderung |
 |---|---|
-| SEC-20 | Die ausgelieferte Datei DARF KEINE Netzwerkverbindung aufbauen. Dies MUSS per Content-Security-Policy erzwungen werden, nicht nur zugesichert: `default-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'`. Die Datei DARF weder eine URL noch einen `fetch`-Aufruf enthalten. |
+| SEC-20 | Die ausgelieferte Datei DARF KEINE Netzwerkverbindung aufbauen. Dies MUSS per Content-Security-Policy erzwungen werden, nicht nur zugesichert: `default-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'`. Die Datei DARF weder eine URL noch einen `fetch`-Aufruf enthalten. Eingebettete Schriften sind zulässig (`font-src data:`), solange sie als `data:`-URI in der Datei stehen — eine `data:`-URI kann keine Verbindung aufbauen, die Zusage bleibt wörtlich gültig. |
 | SEC-20a | Im Serverbetrieb DARF die Aufweichung auf `connect-src 'self'` **ausschließlich in der ausgelieferten Kopie** erfolgen. Die Datei auf dem Datenträger MUSS unverändert bleiben, damit sie heruntergeladen und offline mit unveränderter Zusage weiterverwendet werden kann. |
 | SEC-20b | Die Injektion MUSS auf genau zwei Stellen begrenzt sein — die CSP-Direktive und ein Skriptblock — und MUSS im Klartext abrufbar sein (`GET /api/injection`). Schlägt die Erkennung dieser Stellen fehl, MUSS die Auslieferung mit einem Fehler abbrechen, statt eine Anwendung ohne Adapter zu liefern. |
-| SEC-21 | Es DÜRFEN KEINE externen Ressourcen eingebunden werden — keine CDN-Skripte, Stylesheets, Web Fonts oder Bilder. |
+| SEC-21 | Es DÜRFEN KEINE externen Ressourcen eingebunden werden — keine CDN-Skripte, Stylesheets, Web Fonts oder Bilder. Schriften werden entweder eingebettet (Anwendung) oder vom Dienst selbst ausgeliefert (Serverseiten); von einem fremden Host kommt nichts. |
 | SEC-22 | Es DARF KEINE Telemetrie, Fehlerübermittlung oder Nutzungsstatistik stattfinden. |
 | SEC-23 | Nutzergesteuerte Inhalte (Titel, Benutzername, Notizen, Tags, Anhangsnamen, Verlaufsdetails) MÜSSEN per `textContent` in das DOM geschrieben werden, nie per `innerHTML`. |
 | SEC-24 | Gespeicherte URLs DÜRFEN nur mit den Schemata `http` und `https` geöffnet werden. Alle anderen — insbesondere `javascript:` — MÜSSEN abgewiesen werden. |
@@ -124,6 +124,7 @@ Diese Kapitel hat Vorrang vor allen funktionalen Anforderungen. Ein Konflikt wir
 | SEC-27 | Wird die Anwendung über einen Webserver ausgeliefert, MUSS die Übertragung per TLS erfolgen. Browser stellen `crypto.subtle` nur in einem *Secure Context* bereit; über `http://` auf einer anderen Adresse als `localhost` fehlt die Web-Crypto-API vollständig. |
 | SEC-28 | Fehlt der Secure Context, MUSS die Anwendung dies beim Laden erkennen, verständlich melden und die Bedienelemente zum Anlegen und Entsperren sperren — statt später mit einem Laufzeitfehler abzubrechen. |
 | SEC-29 | Ein ausliefernder Server MUSS `frame-ancestors 'none'` als HTTP-Header setzen. Im `<meta>`-Tag wird die Direktive vom Browser ignoriert und ist dort nicht durchsetzbar. |
+| SEC-29a | Die Seiten des Dienstes (Anmeldung, Verwaltung) DÜRFEN weder inline-Skripte noch inline-Styles verwenden: `script-src 'self'; style-src 'self'`. Stylesheet, Schriften und Skripte liefert der Dienst selbst aus. |
 | SEC-30 | Ein Container-Abbild DARF keine Dokumentation, keine Tests, keine Konfiguration mit Geheimnissen, keine Datenbank und unter keinen Umständen eine Vault-Datei enthalten. Der Dienstcode gehört hinein, das Datenverzeichnis kommt als Volume dazu. |
 
 ### 3.4a Serverbetrieb: Anmeldung und Zugriff
@@ -651,6 +652,9 @@ Abgehakte Punkte sind nachweisbar geprüft — die Krypto-, Datenintegritäts-, 
 - [x] Nach einer Migration im Prozess protokolliert der Dienst weiterhin
 - [x] Injektion: genau zwei Änderungen, Datei auf dem Datenträger unverändert, Adapter vor dem Anwendungsskript, `/api/injection` zeigt den Block
 - [x] Anmeldeseite zeigt nur Provider-Schaltflächen, kein Passwortfeld
+- [x] Serverseiten ohne inline-Style und inline-Skript; Stylesheet, Skripte und Schriften kommen unter `/static` vom Dienst
+- [x] Verwaltung bei 390 px: kein Querscrollen, Tabellenzeilen werden zu Karten, Aktionsziele mindestens 44 px
+- [x] Freigaben, Gruppenmitglieder und Kontogruppen werden über `<dialog>` mit Auswahllisten gepflegt; kein `prompt()` mehr im Projekt
 - [ ] OIDC-Anmeldung gegen Microsoft 365 und Google mit echten Zugangsdaten, einschließlich Gruppen-Sync (Google: ob `searchDirectGroups` für Nutzer ohne Admin-Rolle Ergebnisse liefert)
 - [ ] Verhalten hinter dem Reverse Proxy der Zielumgebung
 

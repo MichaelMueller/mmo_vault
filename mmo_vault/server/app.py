@@ -13,6 +13,7 @@ from . import db, deps
 from .config import Config, NotConfigured
 from .models import Provider, User
 from .routers import admin_api, auth, oidc, pages, vault_api
+from .routing import UnitOfWork
 
 APP_VERSION = "2.1.0"
 
@@ -63,6 +64,13 @@ def create_app(database_url: str | None = None) -> FastAPI:
         redoc_url=None,
         openapi_url=None,
     )
+
+    # The handful of endpoints declared on the application itself further down
+    # go through this router, and they read the database like any other. Without
+    # this they would keep committing in the dependency teardown, which happens
+    # after the answer has been sent - see routing.UnitOfWork. Routers included
+    # below keep their own class, so this does not reach them.
+    app.router.route_class = UnitOfWork
 
     # Authlib keeps the OAuth state between redirect and callback in a signed
     # cookie. Nothing else uses it - the service's own sessions live in the

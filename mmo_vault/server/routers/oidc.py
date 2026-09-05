@@ -22,8 +22,9 @@ from sqlalchemy.orm import Session as DbSession
 from .. import deps, providers, sessions, sync
 from ..config import Config
 from ..models import Allowlist, AuditLog, Provider, User, utcnow
+from ..routing import UnitOfWork
 
-router = APIRouter(prefix="/auth/oidc", tags=["auth"])
+router = APIRouter(prefix="/auth/oidc", tags=["auth"], route_class=UnitOfWork)
 
 
 def _oauth_client(provider: Provider):

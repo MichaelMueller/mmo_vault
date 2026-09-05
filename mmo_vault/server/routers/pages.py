@@ -16,8 +16,9 @@ from sqlalchemy.orm import Session as DbSession
 from .. import deps, injection
 from ..config import Config
 from ..models import Provider, Session, User
+from ..routing import UnitOfWork
 
-router = APIRouter(tags=["pages"])
+router = APIRouter(tags=["pages"], route_class=UnitOfWork)
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
 
 

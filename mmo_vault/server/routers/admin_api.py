@@ -28,8 +28,9 @@ from ..models import (
     VaultAccess,
     VaultLock,
 )
+from ..routing import UnitOfWork
 
-router = APIRouter(prefix="/api", tags=["admin"])
+router = APIRouter(prefix="/api", tags=["admin"], route_class=UnitOfWork)
 
 
 # ------------------------------------------------------------------- payloads

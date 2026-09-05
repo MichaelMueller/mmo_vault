@@ -35,8 +35,9 @@ from sqlalchemy.orm import Session as DbSession
 from .. import deps, history, hooks, storage, vaults
 from ..config import Config
 from ..models import AuditLog, Generation, Group, User, Vault, VaultAccess, VaultLock, utcnow
+from ..routing import UnitOfWork
 
-router = APIRouter(prefix="/api/vaults", tags=["vaults"])
+router = APIRouter(prefix="/api/vaults", tags=["vaults"], route_class=UnitOfWork)
 
 LOCK_HEADER = "x-vault-lock"
 

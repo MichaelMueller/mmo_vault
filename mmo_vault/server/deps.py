@@ -8,6 +8,8 @@ active or not.
 
 from __future__ import annotations
 
+from typing import Iterator
+
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session as DbSession
 
@@ -20,8 +22,15 @@ from .models import Session, User
 CSRF_HEADER = "x-vault-request"
 
 
-def get_db() -> DbSession:
-    yield from database.get_session()
+def get_db(request: Request) -> Iterator[DbSession]:
+    """The unit of work for this request.
+
+    Parked on `request.state` as well, so that `UnitOfWork` can commit it
+    before the response is transmitted. Rollback and close stay here.
+    """
+    with database.session_scope() as session:
+        request.state.db = session
+        yield session
 
 
 def get_config(db: DbSession = Depends(get_db)) -> Config:
